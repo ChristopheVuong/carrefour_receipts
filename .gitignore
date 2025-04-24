@@ -1,3 +1,9 @@
+# Secret file credentials and cookies file
+secrets.yml
+cookies.txt
+carrefour_extracts.json
+extracts.md
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
