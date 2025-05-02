@@ -16,17 +16,21 @@ Analysis of own Carrefour receipts
 
 ### **1. Project Setup & Requirements**  
 - **Define scope** (actionable goals):  
-  - Extract receipts (orders, items, loyalty data) from Carrefour’s portal.  
-  - Analyze spending trends, category shares, and temporal patterns.  
-  - Build a Streamlit dashboard for visualization .  
+  - Extract receipts (orders, items, loyalty data) from Carrefour’s portal.
+  - Extract Drive orders from Carrefour's portal.
+  - Implement a consistent, sustainable extraction process in order to feed on a regular basis a MongoDB database consisting of JSON files with receipt or order details (not necessarily aligned).  
+  - Analyze spending trends (rolling averages, top products), category shares (share of food spending), and temporal patterns (price evolutions of essential items).  
+  - Build a Streamlit dashboard for visualization.  
 
 - **Tech Stack**:  
-  - Python 3.8+ (Selenium, Requests, Pandas, PySpark).  
-  - Parquet for storage, DuckDB/SQLite for analysis.  
-  - Streamlit for visualization.  
+  - Python 3.10+ but Python 3.8+ should be enough.  
+  - JSON for storage by default (API endpoint), MongoDB for database and querying and Pandas  
+  - Matplotlib and maybe PowerBI for visualization, Streamlit for interactive display.  
 - **Dependency management**
-  - Create a new conda environment and install dependency (playwright, requests, httpx) with Python 3.10 or Python 3.11.
+  The project does not need special packages for its main functionality that is based on curl commands, csv writing and formatting.
+  - Create a new conda environment and install dependency (Selenium, playwright, requests, httpx, Pymongo) with Python 3.10 or Python 3.11.
   - Use Poetry otherwise for this pure Python project.
+
 
 ---
 
@@ -39,7 +43,8 @@ Analysis of own Carrefour receipts
   - Use `undetected_chromedriver` with Selenium to mask `navigator.webdriver` flags.  Deploy headless browsers with patched TLS fingerprints (e.g., using `selenium-stealth`). See for example https://scrapfly.io/blog/how-to-avoid-web-scraping-blocking-tls/#what-is-tls for TLS fingerprints explanation.
   - Rotate user-agents and mimic human behavior (randomized delays, mouse movements).  
   - Beware HTTP Details Most users browse the internet web pages through a few popular browsers, such as Chrome, Firefox, or Edge. These browsers intercept their configuration. Reproduce: `Accept` (`application/json` when scraping hidden APIs or `text/xml` for sitemaps), `accept-language`, `user-agent` and `cookie`.
-  - Leverage Javascript for fingerprinting work (see https://scrapfly.io/blog/how-to-avoid-web-scraping-blocking-javascript/#how-does-browser-fingerprinting-work)
+  - Leverage Javascript for fingerprinting work (see https://scrapfly.io/blog/how-to-avoid-web-scraping-blocking-javascript/#how-does-browser-fingerprinting-work).
+  - Beware connection with VPN might not work due to IP ban.
 
 
 - **Session management**:  
@@ -61,32 +66,53 @@ The curl must be run on the same IP as you were loading the site with.
 - How to make GET requests?
   - We may use httpx over requests by following the tutorial in https://scrapfly.io/blog/how-to-scrape-hidden-apis/. Cookies are handled differently in browser-like tools and http client library such as `requests` and `httpx`.
   - If we really need to mimic a browser to avoid bot detection, we can use Selenium get method and/or execute Javascript request in order to retrieve JSON content. However Javascript execution may be detected as bot action.
-  - The only viable option is to get the API response by `curl` command (actually no rate limit, even no need to pause once logged in). 
+  - The only viable option is to get the API response by `curl` command (no need to pause once logged in as one can run in chain several curl get commands). 
   
 - **Data structure**:  
   - Parse JSON responses into three tables:  
-    1. **Orders**: `order_id, datetime, total_amount, payment_method, discounts`.  
-    2. **Items**: `order_id, product_name, quantity, price, category` (enrich via NLP if raw data is unstructured, for example predict the category with feature VAT).  
-    3. **Loyalty**: `order_id, points_earned, rewards_used`.  
+    1. **Orders**: `order_id, datetime, total_amount, payment_method, discounts`.
+    2. **Receipts:** `id, dateKey`, `total_amount_`  
+    3. **Items**: `order_id, product_name, quantity, price, category` (enrich via NLP if raw data is unstructured, for example predict the category with feature VAT).  
+    4. **Loyalty**: `order_id, points_earned, rewards_used`.  
   - Expose an endpoint (FastAPI) that accesses to that database, and use it to feed a Streamlit app.
 
 ---
 
-### **4. Data Storage & Pipelines**  
+### **4. Data Storage & Pipelines**
+
 #### **Database Design**  
 - **Storage strategy**:
-  - Build a MongoDB database since the API response is in JSON format and can constitute a document database easy to query from with MongoDB. Use of NoSQL in the context of local data (collected from a mobile app or a laptop on a daily or weekly basis).   
-  - Partition Parquet files by year/month for efficient querying (e.g., `data/year=2023/month=12/`) and generic export format if JSON is too cumbersome.  
-  - Use PySpark for distributed processing if data scales beyond 1M+ rows (only plausible for purchased items). Only about a thousand rows or less for order receipts (use Pandas).    
-
+  - Build a MongoDB database since the API response is in JSON format and can constitute a document database easy to query from with MongoDB. Use of NoSQL in the context of local data (collected from a mobile app or a laptop on a daily or weekly basis).
+  - Keep the stdout as it is (JSON file containing the receipt or order details) so that analysis by NoSQL querying is not constrained.     
+  - Use PySpark for distributed processing if data scales beyond 1M+ rows (only plausible for purchased items). Only about a thousand rows or less for order receipts (use Pandas). 
 - **Schema enforcement**:  
   - Validate data types (e.g., `decimal` for amounts, `datetime` for timestamps).  
   - Handle missing values (e.g., default `0` for discounts, payment info).  
 
+#### Database connection
+
+On macOS, for the first time, use Homebrew to install `mongodb-community`.
+Then, run:
+
+```bash
+brew services start mongodb-community
+```
+This starts the connection to the database. For sake of simplicity, we employ a local database (e.g. `localhost:27017`).
+
+   
+#### Querying
+
+We use MQL (MongoDB Query Language) with the help of either MongoDB Atlas SQL Interface or Copilot for query statement based on prompt of query specifications. We have several approaches:
+- general querying: all the records with payment infos, and maybe summary of purchased products (for pie charts)
+- summary by month and year: total amount, total amount with VAT 5,5%
+- queries focused on products (different time granularity) with keywords`$unwind` and `$group` on the `products` key.
+
+
 #### **Automation & CI/CD**  
 - **Pipeline orchestration**:  
   - Script extraction → transformation → storage as a Python module.  
-  - Use GitHub Actions to schedule daily/weekly runs (Cron jobs).  
+  - Use GitHub Actions to schedule monthly runs (Cron jobs).
+  - The cron job may need to force the opening of a new tab for login in Carrefour account which is a bit harsh for a consumer.
 
 - **Testing**:  
   - Write unit tests for critical functions (e.g., Cloudflare bypass, link validity, HTTPS response, JSON parsing).
@@ -106,8 +132,12 @@ The curl must be run on the same IP as you were loading the site with.
 #### **Key Metrics**  
 - **Temporal trends**:  
   - Rolling averages (3M/6M/yearly) using Pandas window functions.  
-  - Year-over-year spending comparisons.  
-
+  - Year-over-year spending comparisons.
+  - How much a year spending on non-food commodities? Filtering with VAT 20% (small amount not higher than 15-20 euros by unit).  
+- **Behavioral trends**:
+  - Periods of the year with higher spending on a sample of three-four years
+  - Drive vs in-store: what one buys
+  - Average price per product for Drive orders and in-store receipts
 - **Category insights**:  
   - Bio vs. regular food share (regular expression: `bio`).  
   - Meat vs. plant-based spending ratios.
@@ -119,6 +149,7 @@ The curl must be run on the same IP as you were loading the site with.
 - **Quantity**
    - How many kilograms of vegetables and fruits in average?
    - How many items in average, per month?
+   - Inventory for hygiene and beauty (total quantity based on number of purchases of a selection of products by month or year): use rolling aggregation to get a better grasp of the evolution of number of items and then the actual consumption patterns.
    - How many liquid detergent containers per year? How many liters?
 
 #### **Streamlit App**  
@@ -135,11 +166,13 @@ The curl must be run on the same IP as you were loading the site with.
 
 ### **5. Risk Mitigation**  
 - **Compliance**:  
-  - Anonymize personal data (e.g., hash `order_id`).  
-  - Adhere to Carrefour’s `robots.txt` and terms of service.  
+  - Adhere to Carrefour’s `robots.txt` and terms of service.
+  - Do not version-control `secrets.yml` that contain some critical piece of information relative to user.
+  - WISH: Anonymize personal data (e.g. hash some critical id number if necessary).  
+   
 
 - **Monitoring**:  
-  - Log errors (e.g., failed scrapes, schema mismatches) with `structlog`.  
+  - Log errors (e.g., failed scrapes, schema mismatches) with `structlog` thanks to `logging` library.
   - Data drift: either feature drift (inflation effect) or concept drift (Covid)
   - Alert on pipeline failures (e.g., Slack/Email notifications).  
 
@@ -148,7 +181,8 @@ The curl must be run on the same IP as you were loading the site with.
 ### **6. Future Enhancements**  
 - **Advanced NLP**: Use spaCy to categorize unstructured product names.  
 - **Real-time dashboards**: Integrate Kafka for live data streaming.  
-- **Cost optimization**: Migrate to AWS Glue/S3 for scalable storage if handling several loyalty cards.  
+- **Cost optimization**: Migrate to AWS Glue/S3 for scalable storage if handling several loyalty cards (user accounts). Think of paying for efficient scraping (automation of login without the resort to browsers).
+- **OOP or imperative coding**: Understand the true purpose of coding with OOP in several use cases surrounding this project.  
 
 ---
 

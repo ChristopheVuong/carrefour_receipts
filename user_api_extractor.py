@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from abc import ABC, abstractmethod
 import csv
 from datetime import datetime
 import json
@@ -18,17 +19,14 @@ logger = logging.getLogger(__name__)
 
 # Define constants
 MAX_SCROLLS = 5  # Maximum number of scrolls to fetch data
-BRAND = "carrefour"  # Brand name for the API
-REFERER_STORE = "https://www.carrefour.fr/mon-compte/mes-achats/en-magasin"
-REFERER_DRIVE = "https://www.carrefour.fr/mon-compte/mes-achats/en-ligne"
 
 
-class CarrefourAccountAPIHandler:
+class AccountAPIHandler(ABC):
     """
-    A class to handle login, fetching data from an API, and saving it locally.
+    Abstract base class for handling account API interactions (retail store online or physical).
     """
 
-    def __init__(self, cookies_file: str = "cookies.txt", dst_folder: str = "data/"):
+    def __init__(self, cookies_file: str = "cookies.txt", dst_folder: str = "data/") -> None:
         """
         Initialize the handler with default configurations.
         Args:
@@ -37,9 +35,10 @@ class CarrefourAccountAPIHandler:
         """
         self.cookies_file = cookies_file
         self.dst_folder = dst_folder
-        CarrefourAccountAPIHandler.ensure_directory_exists(self.dst_folder)
+        AccountAPIHandler.ensure_directory_exists(self.dst_folder)
 
-    def ensure_directory_exists(self, folder: str) -> None:
+    @staticmethod
+    def ensure_directory_exists(folder: str) -> None:
         """
         Ensure the destination directory exists. If not, create it.
         Args:
@@ -49,6 +48,131 @@ class CarrefourAccountAPIHandler:
         if not folder_path.exists():
             folder_path.mkdir(parents=True)
             logger.info(f"Created directory: {folder}")
+
+    @abstractmethod
+    def perform_login(self, login_webpage: str, *args, **kwargs) -> None:
+        """
+        Perform login to the account.
+        Args:
+            login_webpage (str): Authentication page URL.
+            *args: Positional arguments for credentials.
+            **kwargs: Keyword arguments for credentials.
+        """
+        pass
+
+    @staticmethod
+    def load_secrets(path_to_secrets: str = "secrets.yml") -> Dict[str, Any]:
+        """
+        Load configuration from a YAML file.
+        Args:
+            path_to_secrets (str): Path to the YAML configuration file.
+        Returns:
+            Dict[str, Any]: Configuration as a dictionary.
+        Raises:
+            FileNotFoundError: If the configuration file is not found.
+            ValueError: If the YAML file has invalid syntax.
+        """
+        logger.info(f"Loading configuration from: {path_to_secrets}")
+        try:
+            with open(path_to_secrets, "r", encoding="utf-8") as f:
+                config = yaml.safe_load(f)
+            if not isinstance(config, dict):
+                raise ValueError(
+                    "Configuration file must contain a dictionary at the top level."
+                )
+            return config
+        except FileNotFoundError as e:
+            logger.error(f"Configuration file '{path_to_secrets}' not found.")
+            raise
+        except yaml.YAMLError as e:
+            logger.error(
+                f"Invalid YAML format in configuration file '{path_to_secrets}': {e}"
+            )
+            raise
+
+    @abstractmethod
+    def fetch_data(
+        self,
+        url: str,
+        params: Dict[str, Any],
+        is_online: bool = False,
+        verbose: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Fetch data from the API.
+        Args:
+            url (str): API endpoint URL.
+            params (Dict[str, Any]): Query parameters for the API.
+            is_online (bool): Indicates if the purchase is online or in store.
+            verbose (bool): Whether to print detailed logs.
+        Returns:
+            Dict[str, Any]: Parsed JSON response.
+        """
+        pass
+
+    @abstractmethod
+    def fetch_receipt_details(
+        self, base_url: str, refs: Dict[str, Any], verbose: bool = False
+    ) -> None:
+        """
+        Fetch detailed receipt data (physical purchase) from the API and write it to json file.
+        Args:
+            base_url (str): API endpoint URL.
+            refs (Dict[str, Any]): Receipt references.
+            verbose (bool): Whether to print detailed logs.
+        """
+        pass
+    
+    @abstractmethod
+    def fetch_order_details(
+        self, base_url: str, refs: Dict[str, Any], verbose: bool = False
+    ) -> None:
+        """
+        Fetch detailed order data (online purchase) from the API and write it to json file.
+        Args:
+            base_url (str): API endpoint URL.
+            refs (Dict[str, Any]): Order references.
+            verbose (bool): Whether to print detailed logs.
+        """
+        pass
+
+    def save_data_to_file(self, data: Dict[str, Any], filename: str) -> None:
+        """
+        Save data to a JSON file in the destination folder.
+        Args:
+            data (Dict[str, Any]): Data to save.
+            filename (str): Name of the file.
+        """
+        date_str = datetime.now().strftime("%Y%m%d")
+        filepath = Path(self.dst_folder) / date_str / filename
+        if not filepath.parent.exists():
+            filepath.parent.mkdir(parents=True, exist_ok=True)
+        filepath.write_text(
+            json.dumps(data, ensure_ascii=False, indent=4), encoding="utf-8"
+        )
+        logger.info(f"Data saved to: {self.dst_folder}{filename}")
+
+
+class CarrefourAccountAPIHandler(AccountAPIHandler):
+    """
+    A class to handle login, fetching data from an API, and saving it locally.
+    """
+
+    BRAND_NAME = "carrefour"
+    BRAND_REFERER = {
+        "referer_store": "https://www.carrefour.fr/mon-compte/mes-achats/en-magasin",
+        "referer_drive": "https://www.carrefour.fr/mon-compte/mes-achats/en-ligne",
+    }
+
+    def __init__(self, cookies_file: str = "cookies.txt", dst_folder: str = "data/") -> None:
+        """
+        Initialize the handler with default configurations.
+        Args:
+            cookies_file (str): Path to the cookies file.
+            dst_folder (str): Folder to save fetched data.
+        """
+        super().__init__(cookies_file=cookies_file, dst_folder=dst_folder)
+        # open for extension
 
     def perform_login(self, login_webpage: str, *args, **kwargs) -> None:
         """
@@ -62,7 +186,8 @@ class CarrefourAccountAPIHandler:
             ValueError: If no valid input is provided.
             KeyError: If required keys are missing in the dictionary.
             subprocess.CalledProcessError: If the curl command fails.
-        Note: This method does not bypass Cloudfare turnstile anti-bot protection. Use a browser instead.
+        Note: This method does not bypass Cloudfare turnstile anti-bot protection.
+        The same goes for Selenium, Playwright (cf_waiting_room remain). Use a browser instead.
         """
         try:
             # Extract credentials based on input format
@@ -81,29 +206,45 @@ class CarrefourAccountAPIHandler:
                         "Missing required keyword arguments: 'username' and/or 'password'"
                     )
             else:
-                secrets = CarrefourAccountAPIHandler.load_params()
+                secrets = CarrefourAccountAPIHandler.load_secrets()
                 username, password = secrets.get("username"), secrets.get("password")
+            if username and password:
+                logger.info(f"Logging in with username: {username}")
+                CarrefourAccountAPIHandler.login_with_curl(
+                    login_webpage, username, password, self.cookies_file
+                )
+            else:
+                logger.warning("Username or password is missing.")
+                return
 
-            login_payload = f"idToken1={username}&idToken2={password}"
-            subprocess.run(
-                [
-                    "curl",
-                    "-c",
-                    str(self.cookies_file),
-                    "-d",
-                    login_payload,
-                    "-H",
-                    "Content-Type: application/x-www-form-urlencoded",
-                    "-X",
-                    "POST",
-                    login_webpage,
-                ],
-                check=True,
-            )
-            logger.info("Login successful. Cookies saved to cookies.txt")
         except subprocess.CalledProcessError as e:
             logger.error(f"Login failed: {e}")
             raise
+
+    @staticmethod
+    def login_with_curl(
+        login_webpage: str, username: str, password: str, cookies_file: str
+    ) -> None:
+        """
+        Perform login using curl and save cookies to a file.
+        """
+        login_payload = f"idToken1={username}&idToken2={password}"
+        subprocess.run(
+            [
+                "curl",
+                "-c",
+                cookies_file,
+                "-d",
+                login_payload,
+                "-H",
+                "Content-Type: application/x-www-form-urlencoded",
+                "-X",
+                "POST",
+                login_webpage,
+            ],
+            check=True,
+        )
+        logger.info(f"Login successful. Cookies saved to {cookies_file}")
 
     def fetch_paginated_receipts(
         self,
@@ -129,7 +270,7 @@ class CarrefourAccountAPIHandler:
         data = self.fetch_data(url, params, is_online=False, verbose=verbose)
         self.save_data_to_file(
             data,
-            f"{date_time_str}-{loyalty_card_number}_{BRAND}_receipts_scroll_0.json",
+            f"{date_time_str}-{loyalty_card_number}_{self.brand_name}_receipts_scroll_0.json",
         )
 
         # Fetch subsequent pages
@@ -144,7 +285,7 @@ class CarrefourAccountAPIHandler:
                     break
                 self.save_data_to_file(
                     data,
-                    f"{date_time_str}-{loyalty_card_number}_{BRAND}_receipts_scroll_{scroll}.json",
+                    f"{date_time_str}-{loyalty_card_number}_{CarrefourAccountAPIHandler.BRAND_NAME}_receipts_scroll_{scroll}.json",
                 )
             except Exception as e:
                 logger.error(f"Error during data fetching: {e}")
@@ -169,7 +310,7 @@ class CarrefourAccountAPIHandler:
         data = self.fetch_data(url, params, is_online=False, verbose=verbose)
         self.save_data_to_file(
             data,
-            f"{date_time_str}-{loyalty_card_number}_{BRAND}_receipts_scroll_0.json",
+            f"{date_time_str}-{loyalty_card_number}_{self.brand_name}_receipts_scroll_0.json",
         )
 
         # Fetch all subsequent pages
@@ -185,7 +326,7 @@ class CarrefourAccountAPIHandler:
                     break
                 self.save_data_to_file(
                     data,
-                    f"{date_time_str}-{loyalty_card_number}_{BRAND}_receipts_all_scroll_{scroll}.json",
+                    f"{date_time_str}-{loyalty_card_number}_{CarrefourAccountAPIHandler.BRAND_NAME}_receipts_all_scroll_{scroll}.json",
                 )
                 scroll += 1
             except Exception as e:
@@ -211,7 +352,7 @@ class CarrefourAccountAPIHandler:
         data = self.fetch_data(url, params, is_online=True, verbose=verbose)
         self.save_data_to_file(
             data,
-            f"{date_time_str}-{start_date}_{BRAND}_orders_scroll_0.json",
+            f"{date_time_str}-{start_date}_{self.brand_name}_orders_scroll_0.json",
         )
 
         # Fetch all subsequent pages
@@ -227,7 +368,7 @@ class CarrefourAccountAPIHandler:
                     break
                 self.save_data_to_file(
                     data,
-                    f"{date_time_str}-{start_date}_{BRAND}_orders_all_scroll_{scroll}.json",
+                    f"{date_time_str}-{start_date}_{CarrefourAccountAPIHandler.BRAND_NAME}_orders_all_scroll_{scroll}.json",
                 )
                 scroll += 1
             except Exception as e:
@@ -235,7 +376,11 @@ class CarrefourAccountAPIHandler:
                 break
 
     def fetch_data(
-        self, url: str, params: Dict[str, Any], is_online: bool=False, verbose: bool = False
+        self,
+        url: str,
+        params: Dict[str, Any],
+        is_online: bool = False,
+        verbose: bool = False,
     ) -> Dict[str, Any]:
         """
         Fetch data from the hidden API URL using saved cookies and parse JSON.
@@ -259,9 +404,14 @@ class CarrefourAccountAPIHandler:
 
         api_url = f"{url}?{urlencode(params)}" if params else url
         # Set the referer header based on the purchase type
-        referer = REFERER_DRIVE if is_online else REFERER_STORE
+        referer = (
+            CarrefourAccountAPIHandler.BRAND_REFERER("referer_drive", "")
+            if is_online
+            else CarrefourAccountAPIHandler.BRAND_REFERER.get("referer_store", "")
+        )
         logger.info(f"Fetching data from: {api_url}")
         try:
+            # realistic request headers
             result = subprocess.run(
                 [
                     "curl",
@@ -312,7 +462,7 @@ class CarrefourAccountAPIHandler:
 
     def extract_receipts_ids(
         self,
-        criterion1: str = f"{BRAND}_receipt_",
+        criterion1: str = "carrefour_receipt_",
         criterion2: str = "",
         output_file: str = "data/receipts_ids.csv",
     ) -> None:
@@ -355,7 +505,7 @@ class CarrefourAccountAPIHandler:
 
     def extract_orders_ids(
         self,
-        criterion1: str = f"{BRAND}_order_",
+        criterion1: str = "carrefour_order_",
         criterion2: str = "",
         output_file: str = "data/orders_ids.csv",
     ) -> None:
@@ -385,6 +535,7 @@ class CarrefourAccountAPIHandler:
         if rows:
             # Open a file or write it if it doesn't exist
             file_exists = Path(output_file).exists()
+            # newline = "" or "\n" to avoid blank lines in CSV
             with open(output_file, "a+", newline="\n", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 if not file_exists:
@@ -411,7 +562,7 @@ class CarrefourAccountAPIHandler:
         data = self.fetch_data(url, params={}, is_online=False, verbose=verbose)
         self.save_data_to_file(
             data,
-            f"{date_time_str}-{BRAND}_receipt_{refs[headers[0]]}_details.json",
+            f"{date_time_str}-{CarrefourAccountAPIHandler.BRAND_NAME}_receipt_{refs[headers[0]]}_details.json",
         )
 
     def fetch_order_details(
@@ -431,7 +582,7 @@ class CarrefourAccountAPIHandler:
         data = self.fetch_data(url, params={}, is_online=True, verbose=verbose)
         self.save_data_to_file(
             data,
-            f"{date_time_str}-{BRAND}_order_{refs[headers[0]]}_details.json",
+            f"{date_time_str}-{CarrefourAccountAPIHandler.BRAND_NAME}_order_{refs[headers[0]]}_details.json",
         )
 
     @staticmethod
@@ -477,7 +628,11 @@ class CarrefourAccountAPIHandler:
             is_online (bool): Whether to fetch data from online purchases or in-store.
             verbose (bool): Whether to print detailed logs.
         """
-        headers = self.get_order_list_headers() if is_online else self.get_receipt_list_headers()
+        headers = (
+            self.get_order_list_headers()
+            if is_online
+            else self.get_receipt_list_headers()
+        )
         with open(input_file, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
@@ -491,22 +646,6 @@ class CarrefourAccountAPIHandler:
                     self.fetch_order_details(base_url, row, verbose=verbose)
                 else:
                     self.fetch_receipt_details(base_url, row, verbose=verbose)
-
-    def save_data_to_file(self, data: Dict[str, Any], filename: str) -> None:
-        """
-        Save data to a JSON file in the destination folder.
-        Args:
-            data (Dict[str, Any]): Data to save.
-            filename (str): Name of the file.
-        """
-        date_str = datetime.now().strftime("%Y%m%d")
-        filepath = Path(self.dst_folder) / date_str / filename
-        if not filepath.parent.exists():
-            filepath.parent.mkdir(parents=True, exist_ok=True)
-        filepath.write_text(
-            json.dumps(data, ensure_ascii=False, indent=4), encoding="utf-8"
-        )
-        logger.info(f"Data saved to: {self.dst_folder}{filename}")
 
     @staticmethod
     def check_loyalty_params(params: Dict[str, Any]) -> None:
@@ -585,55 +724,13 @@ class CarrefourAccountAPIHandler:
             Dict[str, Any]: Headers for the receipt list.
         """
         return ["orderNumber"]
-    
-    @staticmethod
-    def ensure_directory_exists(folder: str) -> None:
-        """
-        Ensure the destination directory exists. If not, create it.
-        Args:
-            folder (str): Path to the folder.
-        """
-        folder_path = Path(folder)
-        if not folder_path.exists():
-            folder_path.mkdir(parents=True)
-            logger.info(f"Created directory: {folder}")
-
-    @staticmethod
-    def load_params(path_to_secrets: str = "secrets.yml") -> Dict[str, Any]:
-        """
-        Load configuration from a YAML file.
-        Args:
-            path_to_secrets (str): Path to the YAML configuration file.
-        Returns:
-            Dict[str, Any]: Configuration as a dictionary.
-        Raises:
-            FileNotFoundError: If the configuration file is not found.
-            ValueError: If the YAML file has invalid syntax.
-        """
-        logger.info(f"Loading configuration from: {path_to_secrets}")
-        try:
-            with open(path_to_secrets, "r", encoding="utf-8") as f:
-                config = yaml.safe_load(f)
-            if not isinstance(config, dict):
-                raise ValueError(
-                    "Configuration file must contain a dictionary at the top level."
-                )
-            return config
-        except FileNotFoundError as e:
-            logger.error(f"Configuration file '{path_to_secrets}' not found.")
-            raise
-        except yaml.YAMLError as e:
-            logger.error(
-                f"Invalid YAML format in configuration file '{path_to_secrets}': {e}"
-            )
-            raise
 
 
 def main_store():
     api_url = "https://www.carrefour.fr/api/user/secured/loyalty/orders/receipts"
     api_details_url = "https://www.carrefour.fr/api/user/secured/loyalty/orders/receipt"
     cookies_file = "cookies.txt"
-    config = CarrefourAccountAPIHandler.load_params()
+    config = CarrefourAccountAPIHandler.load_secrets()
     params_loyalty = {
         "loyaltyCardNumber": config.get("loyaltyCardNumber"),
         "loyaltyCardType": "LOYALTY",
@@ -661,7 +758,7 @@ def main_store():
     #     output_file="data/receipts_ids.csv",
     # )
     handler.extract_orders_ids(
-        criterion1=f"{BRAND}_order_",
+        criterion1=f"{CarrefourAccountAPIHandler.BRAND_NAME}_order_",
         criterion2=datetime.now().strftime("%Y%m%d"),
         output_file="data/orders_ids.csv",
     )
@@ -682,9 +779,9 @@ def main_drive():
     api_url = "https://www.carrefour.fr/api/user/orders"
     api_details_url = "https://www.carrefour.fr/api/user/orders"
     cookies_file = "cookies.txt"
-    end_date = datetime.now().strftime("%Y-%m-%d")
+    end_date = datetime.now().strftime("%Y-%m-%d") # YYYY-MM-DD
     params_drive = {
-        "startDate": "2022-01-01T00%3A00%3A00.000Z",
+        "startDate": "2022-01-01T00%3A00%3A00.000Z", # perculiar filter in carrefour.fr
         "endDate": f"{end_date}T00%3A00%3A00.000",
     }
 
@@ -700,16 +797,16 @@ def main_drive():
 
     # Step 3: Extract receipt IDs
     handler.extract_orders_ids(
-        criterion1=f"{BRAND}_order_",
+        criterion1=f"{CarrefourAccountAPIHandler.BRAND_NAME}_order_",
         criterion2=datetime.now().strftime("%Y%m%d"),
-        output_file="data/receipts_ids.csv",
+        output_file="data/orders_ids.csv",
     )
-    CarrefourAccountAPIHandler.remove_duplicates_from_list("data/receipts_ids.csv")
+    CarrefourAccountAPIHandler.remove_duplicates_from_list("data/orders_ids.csv")
 
     # Step 4: Fetch receipt details
     handler.fetch_details_from_file(
         base_url=api_details_url,
-        input_file="data/receipts_ids.csv",
+        input_file="data/orders_ids.csv",
         criterion=datetime.now().strftime("%Y%m%d"),
         verbose=False,
     )

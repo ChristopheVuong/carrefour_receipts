@@ -1,3 +1,4 @@
+from datetime import datetime
 import logging
 from pymongo import MongoClient
 from pymongo.database import Database
@@ -51,6 +52,12 @@ def get_database(client: MongoClient, db_name: str) -> Database:
 
 
 def get_collection(db: Database, collection_name: str = "receipts") -> Collection:
+    """
+    This function returns a collection object.
+    :param db: MongoDB database object
+    :param collection_name: Name of the collection to connect to
+    :return: collection object
+    """
     # Create a collection
     collection = db[collection_name]
 
@@ -74,11 +81,13 @@ def insert_json_files(
     :param criterion1: Criterion to filter files
     :param criterion2: Additional criterion to filter files like date
     :param keep_ids: Whether to keep the original IDs from the JSON files
-    Note: inefficient for now limit insertion by criterion
+    Note: Limit insertion by criterion
     """
     list_data = []
 
-    for file in Path(directory).rglob(f"{criterion2}*{criterion1}*.json"): # even subfolders
+    for file in Path(directory).rglob(
+        f"{criterion2}*{criterion1}*.json"
+    ):  # even subfolders
         with open(file) as f:
             rec = json.load(f)
             if not rec:
@@ -95,7 +104,9 @@ def insert_json_files(
                 list_data.append(rec)
 
     try:
-        result = collection.insert_many(list_data, ordered=False) # ordered=False to allow bulk insert even if some records fail
+        result = collection.insert_many(
+            list_data, ordered=False
+        )  # ordered=False to allow bulk insert even if some records fail
     except BulkWriteError as bwe:
         logger.error(f"Bulk write error: {bwe.details}")
         raise
@@ -130,11 +141,14 @@ def delete_data(collection, query):
     # Log the number of documents deleted
     logger.info(f"Documents deleted: {result.deleted_count}")
 
-def aggregate_and_uroll_to_dataframe(collection: Collection, pipeline: List[str]) -> pd.DataFrame:
+
+def aggregate_and_unroll_to_dataframe(
+    collection: Collection, pipeline: List[str]
+) -> pd.DataFrame:
     """
     Get data from the collection as a pandas DataFrame.
     :param collection: MongoDB collection object
-    :param pipeline: Aggregation pipeline to filter and transform data
+    :param pipeline: Aggregation pipeline to filter and transform data group by _id (which can be a nested structure)
     :return: DataFrame containing the data
     """
     # Read data from the collection using aggregation pipeline
@@ -143,12 +157,14 @@ def aggregate_and_uroll_to_dataframe(collection: Collection, pipeline: List[str]
     # Convert to DataFrame
     df = pd.DataFrame(data)
 
-    df = df._id.apply(pd.Series).join(df.drop(columns=["_id"]), how='left')
+    df = df._id.apply(pd.Series).join(
+        df.drop(columns=["_id"]), how="left"
+    )  # index-based join
 
     return df
 
 
-def main():
+def main_store():
     # MongoDB connection string: setup local connection
     CONNECTION_STRING = "mongodb://localhost:27017/"
 
@@ -156,17 +172,52 @@ def main():
     with MongoClient(CONNECTION_STRING) as client:
         # Get the database
         db = get_database(client, "carrefour")
-    
+
         # Create a collection
         collection = get_collection(db, collection_name="receipts")
 
         # Insert JSON data
-        insert_json_files(collection, directory="data", criterion1="carrefour_receipt_", criterion2="20250430", keep_ids=True)
+        insert_json_files(
+            collection,
+            directory="data",
+            criterion1="carrefour_receipt_",
+            criterion2=datetime.now().strftime("%Y%m%d"),
+            keep_ids=True,
+        )
 
         # Read data
         # read_data(collection, n=10)
 
     logger.info("MongoDB connection closed automatically.")
 
+
+def main_drive():
+    # MongoDB connection string: setup local connection
+    CONNECTION_STRING = "mongodb://localhost:27017/"
+
+    # mongoclient compatible with context manager
+    with MongoClient(CONNECTION_STRING) as client:
+        # Get the database
+        db = get_database(client, "carrefour")
+
+        # Create a collection
+        collection = get_collection(db, collection_name="orders")
+
+        # Insert JSON data
+        insert_json_files(
+            collection,
+            directory="data",
+            criterion1="carrefour_order_",
+            criterion2=datetime.now().strftime("%Y%m%d"),
+            keep_ids=True,
+        )
+
+        # Read data
+        # read_data(collection, n=10)
+
+    logger.info("MongoDB connection closed automatically.")
+
+
 if __name__ == "__main__":
-    main()
+    # main_store()
+    main_drive()
