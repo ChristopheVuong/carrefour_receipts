@@ -7,7 +7,7 @@ import logging
 from typing import Dict, List, Any
 import subprocess
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, unquote
 
 import yaml
 
@@ -26,7 +26,9 @@ class AccountAPIHandler(ABC):
     Abstract base class for handling account API interactions (retail store online or physical).
     """
 
-    def __init__(self, cookies_file: str = "cookies.txt", dst_folder: str = "data/") -> None:
+    def __init__(
+        self, cookies_file: str = "cookies.txt", dst_folder: str = "data/"
+    ) -> None:
         """
         Initialize the handler with default configurations.
         Args:
@@ -95,7 +97,7 @@ class AccountAPIHandler(ABC):
         self,
         url: str,
         params: Dict[str, Any],
-        is_online: bool = False,
+        referer: str,
         verbose: bool = False,
     ) -> Dict[str, Any]:
         """
@@ -103,7 +105,7 @@ class AccountAPIHandler(ABC):
         Args:
             url (str): API endpoint URL.
             params (Dict[str, Any]): Query parameters for the API.
-            is_online (bool): Indicates if the purchase is online or in store.
+            referer (str): Indicates the referer for a more human curl command.
             verbose (bool): Whether to print detailed logs.
         Returns:
             Dict[str, Any]: Parsed JSON response.
@@ -122,7 +124,7 @@ class AccountAPIHandler(ABC):
             verbose (bool): Whether to print detailed logs.
         """
         pass
-    
+
     @abstractmethod
     def fetch_order_details(
         self, base_url: str, refs: Dict[str, Any], verbose: bool = False
@@ -152,6 +154,13 @@ class AccountAPIHandler(ABC):
         )
         logger.info(f"Data saved to: {self.dst_folder}{filename}")
 
+    @staticmethod
+    def check_params(params: Dict[str, Any], required_params: List[str]):
+        for param in required_params:
+            if param not in params:
+                raise ValueError(f"Missing required parameter: {param}")
+        logger.info("All required parameters are present.")
+
 
 class CarrefourAccountAPIHandler(AccountAPIHandler):
     """
@@ -162,9 +171,12 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
     BRAND_REFERER = {
         "referer_store": "https://www.carrefour.fr/mon-compte/mes-achats/en-magasin",
         "referer_drive": "https://www.carrefour.fr/mon-compte/mes-achats/en-ligne",
+        "referer_loyalty": "https://www.carrefour.fr/mon-compte/fidelite/historique",
     }
 
-    def __init__(self, cookies_file: str = "cookies.txt", dst_folder: str = "data/") -> None:
+    def __init__(
+        self, cookies_file: str = "cookies.txt", dst_folder: str = "data/"
+    ) -> None:
         """
         Initialize the handler with default configurations.
         Args:
@@ -267,10 +279,15 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
 
         # Fetch initial data
         logger.info("Fetching initial data...")
-        data = self.fetch_data(url, params, is_online=False, verbose=verbose)
+        data = self.fetch_data(
+            url,
+            params,
+            referer=CarrefourAccountAPIHandler.BRAND_REFERER.get("referer_store", ""),
+            verbose=verbose,
+        )
         self.save_data_to_file(
             data,
-            f"{date_time_str}-{loyalty_card_number}_{self.brand_name}_receipts_scroll_0.json",
+            f"{date_time_str}-{loyalty_card_number}_{CarrefourAccountAPIHandler.BRAND_NAME}_receipts_scroll_0.json",
         )
 
         # Fetch subsequent pages
@@ -279,7 +296,14 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
             try:
                 params["scrollPaging"] = data["meta"].get("scrollPaging", "")
                 params["scrollHash"] = data["meta"].get("scrollHash", "")
-                data = self.fetch_data(url, params, is_online=False, verbose=verbose)
+                data = self.fetch_data(
+                    url,
+                    params,
+                    referer=CarrefourAccountAPIHandler.BRAND_REFERER.get(
+                        "referer_store", ""
+                    ),
+                    verbose=verbose,
+                )
                 if not data:
                     logger.info("No more data to fetch.")
                     break
@@ -307,10 +331,15 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
 
         # Fetch initial data
         logger.info("Fetching initial data...")
-        data = self.fetch_data(url, params, is_online=False, verbose=verbose)
+        data = self.fetch_data(
+            url,
+            params,
+            referer=CarrefourAccountAPIHandler.BRAND_REFERER.get("referer_store", ""),
+            verbose=verbose,
+        )
         self.save_data_to_file(
             data,
-            f"{date_time_str}-{loyalty_card_number}_{self.brand_name}_receipts_scroll_0.json",
+            f"{date_time_str}-{loyalty_card_number}_{CarrefourAccountAPIHandler.BRAND_NAME}_receipts_all_scroll_0.json",
         )
 
         # Fetch all subsequent pages
@@ -320,7 +349,14 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
             try:
                 params["scrollPaging"] = data["meta"].get("scrollPaging", "")
                 params["scrollHash"] = data["meta"].get("scrollHash", "")
-                data = self.fetch_data(url, params, is_online=False, verbose=verbose)
+                data = self.fetch_data(
+                    url,
+                    params,
+                    referer=CarrefourAccountAPIHandler.BRAND_REFERER.get(
+                        "referer_store", ""
+                    ),
+                    verbose=verbose,
+                )
                 if not data:
                     logger.info("No more data to fetch.")
                     break
@@ -349,10 +385,15 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
         # Fetch initial data
         start_date = params.get("startDate", "unknownDate")[:10]
         logger.info("Fetching initial data...")
-        data = self.fetch_data(url, params, is_online=True, verbose=verbose)
+        data = self.fetch_data(
+            url,
+            params,
+            referer=CarrefourAccountAPIHandler.BRAND_REFERER.get("referer_drive", ""),
+            verbose=verbose,
+        )
         self.save_data_to_file(
             data,
-            f"{date_time_str}-{start_date}_{self.brand_name}_orders_scroll_0.json",
+            f"{date_time_str}-{start_date}_{CarrefourAccountAPIHandler.BRAND_NAME}_orders_all_scroll_0.json",
         )
 
         # Fetch all subsequent pages
@@ -362,7 +403,14 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
             try:
                 params["scrollPaging"] = data["meta"].get("scrollPaging", "")
                 params["scrollHash"] = data["meta"].get("scrollHash", "")
-                data = self.fetch_data(url, params, is_online=True, verbose=verbose)
+                data = self.fetch_data(
+                    url,
+                    params,
+                    referer=CarrefourAccountAPIHandler.BRAND_REFERER.get(
+                        "referer_drive", ""
+                    ),
+                    verbose=verbose,
+                )
                 if not data:
                     logger.info("No more data to fetch.")
                     break
@@ -375,11 +423,90 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
                 logger.error(f"Error during data fetching: {e}")
                 break
 
+    def fetch_all_loyalty(
+        self, url: str, params: Dict[str, Any], verbose: bool = False
+    ) -> None:
+        """
+        Fetch all the loyalty details given a reference date in params.
+        Args:
+            url (str): API endpoint URL.
+            params (Dict[str, Any]): Initial query parameters.
+            verbose (bool): Whether to print detailed logs.
+        """
+        CarrefourAccountAPIHandler.check_loyalty_transactions_params(params)
+        end_date = datetime.now()
+        date_time_str = end_date.strftime("%Y%m%d_%H_%M")
+        date = params.get("date")
+        if not date:
+            raise ValueError("The date is None.")
+        month = int(date[:2])
+        year = int(date[-4:])
+        logger.info("Fetching initial data...")
+        # TODO: to continue with loop over dates
+        try:
+            current_date = datetime(
+                year=year, month=month, day=1
+            )  # Start with the initial date
+            end_date_obj = datetime(
+                year=end_date.year, month=end_date.month, day=1
+            )  # Normalize end_date to the first day of the month
+
+            while current_date < end_date_obj:
+                # Format the date as "MM/01/YYYY"
+                params["date"] = current_date.strftime(
+                    "%m/01/%Y"
+                )  # Use strftime for consistent formatting [[10]]
+
+                # Fetch data
+                data = self.fetch_data(
+                    url,
+                    params,
+                    referer=CarrefourAccountAPIHandler.BRAND_REFERER.get(
+                        "referer_loyalty", ""
+                    ),
+                    verbose=verbose,
+                )
+
+                if not data:
+                    logger.info("No data to fetch.")
+                    current_date = self._increment_month(
+                        current_date
+                    )  # Increment the date
+                    continue
+
+                # Process history data
+                if "history" in data and not data["history"]:
+                    current_date = self._increment_month(
+                        current_date
+                    )  # Increment the date
+                    continue
+
+                # Save the data to a file
+                formatted_date = current_date.strftime("%m-%d-%Y").replace("/", "-")
+                self.save_data_to_file(
+                    data,
+                    f"{date_time_str}-{formatted_date}_{CarrefourAccountAPIHandler.BRAND_NAME}_loyalty_transactions_all.json",
+                )
+
+                # Move to the next month
+                current_date = self._increment_month(current_date)
+
+        except Exception as e:
+            logger.error(f"Error during data fetching: {e}")
+
+    def _increment_month(self, current_date):
+        """
+        Increment the month, rolling over to the next year if necessary
+        """
+        if current_date.month == 12:
+            return current_date.replace(year=current_date.year + 1, month=1)
+        return current_date.replace(month=current_date.month + 1)
+
     def fetch_data(
         self,
         url: str,
         params: Dict[str, Any],
-        is_online: bool = False,
+        referer: str = "",
         verbose: bool = False,
     ) -> Dict[str, Any]:
         """
@@ -403,12 +530,7 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
             raise FileNotFoundError("Cookies file not found. Please log in first.")
 
         api_url = f"{url}?{urlencode(params)}" if params else url
-        # Set the referer header based on the purchase type
-        referer = (
-            CarrefourAccountAPIHandler.BRAND_REFERER("referer_drive", "")
-            if is_online
-            else CarrefourAccountAPIHandler.BRAND_REFERER.get("referer_store", "")
-        )
+
         logger.info(f"Fetching data from: {api_url}")
         try:
             # realistic request headers
@@ -476,7 +598,7 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
         rows = []
         headers = CarrefourAccountAPIHandler.get_receipt_list_headers()
         headers.append("dateExtraction")
-        for file in Path(self.dst_folder).glob(f"{criterion2}*{criterion1}/*.json"):
+        for file in Path(self.dst_folder).rglob(f"{criterion2}*{criterion1}*.json"):
             with open(file, "r", encoding="utf-8") as f:
                 item = json.load(f)
                 if "data" in item:
@@ -520,7 +642,7 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
         headers = CarrefourAccountAPIHandler.get_order_list_headers()
         headers.append("dateExtraction")
         # Extract order IDs from JSON files
-        for file in Path(self.dst_folder).glob(f"{criterion2}*{criterion1}/*.json"):
+        for file in Path(self.dst_folder).rglob(f"{criterion2}*{criterion1}*.json"):
             with open(file, "r", encoding="utf-8") as f:
                 item = json.load(f)
                 if "data" in item:
@@ -545,6 +667,48 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
         else:
             logger.warning("No order IDs found.")
 
+    def extract_loyalty_details(
+        self,
+        criterion1: str = "carrefour_loyalty_",
+        criterion2: str = "",
+        output_file: str = "data/loyalty_ids.csv",
+    ) -> None:
+        """
+        Extract order IDs from the fetched data in dst_folder.
+        Args:
+            criterion1 (str): Name criterion for JSON files.
+            criterion2 (str): Additional criterion for filtering files by batch (the extraction date by default).
+            output_file (str): Path to the output CSV file.
+        """
+        rows = []
+        headers = CarrefourAccountAPIHandler.get_loyalty_list_headers()
+        headers.append("dateExtraction")
+        # Extract order IDs from JSON files
+        for file in Path(self.dst_folder).rglob(f"{criterion2}*{criterion1}*.json"):
+            with open(file, "r", encoding="utf-8") as f:
+                item = json.load(f)
+                if "history" in item:
+                    for op in item["history"]:
+                        rows.append(
+                            [
+                                op.get(headers[0]),
+                                criterion2,  # a criterion by default the extraction date
+                            ]
+                        )
+        logger.info(f"Extracted {len(rows)} order IDs.")
+        if rows:
+            # Open a file or write it if it doesn't exist
+            file_exists = Path(output_file).exists()
+            # newline = "" or "\n" to avoid blank lines in CSV
+            with open(output_file, "a+", newline="\n", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                if not file_exists:
+                    writer.writerow(headers)
+                writer.writerows(rows)
+            logger.info(f"Loyalty transaction IDs saved to: {output_file}")
+        else:
+            logger.warning("No loyalty transactions IDs found.")
+
     def fetch_receipt_details(
         self, base_url: str, refs: Dict[str, Any], verbose: bool = False
     ) -> None:
@@ -559,7 +723,12 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
         CarrefourAccountAPIHandler.check_receipt_refs(refs)
         headers = CarrefourAccountAPIHandler.get_receipt_list_headers()
         url = f"{base_url}/{refs[headers[1]]}/{refs[headers[2]]}/{refs[headers[3]]}"
-        data = self.fetch_data(url, params={}, is_online=False, verbose=verbose)
+        data = self.fetch_data(
+            url,
+            params={},
+            referer=CarrefourAccountAPIHandler.BRAND_REFERER.get("referer_store", ""),
+            verbose=verbose,
+        )
         self.save_data_to_file(
             data,
             f"{date_time_str}-{CarrefourAccountAPIHandler.BRAND_NAME}_receipt_{refs[headers[0]]}_details.json",
@@ -579,10 +748,39 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
         CarrefourAccountAPIHandler.check_order_refs(refs)
         headers = CarrefourAccountAPIHandler.get_order_list_headers()
         url = f"{base_url}/{refs[headers[0]]}"
-        data = self.fetch_data(url, params={}, is_online=True, verbose=verbose)
+        data = self.fetch_data(
+            url,
+            params={},
+            referer=CarrefourAccountAPIHandler.BRAND_REFERER.get("referer_drive", ""),
+            verbose=verbose,
+        )
         self.save_data_to_file(
             data,
             f"{date_time_str}-{CarrefourAccountAPIHandler.BRAND_NAME}_order_{refs[headers[0]]}_details.json",
+        )
+    def fetch_loyalty_details(self, base_url: str, refs: Dict[str, Any], verbose: bool = False
+    ) -> None:
+        """
+        Fetch detailed loyalty data from the API.
+        Args:
+            base_url (str): API endpoint URL.
+            refs (Dict[str, Any]): loyalty references.
+            verbose (bool): Whether to print detailed logs.
+        """
+        date_time_str = datetime.now().strftime("%Y%m%d_%H_%M")
+        CarrefourAccountAPIHandler.check_loyalty_refs(refs)
+        headers = CarrefourAccountAPIHandler.get_loyalty_list_headers()
+        url = f"{base_url}/{refs[headers[0]]}"
+        data = self.fetch_data(
+            url,
+            params={},
+            referer=CarrefourAccountAPIHandler.BRAND_REFERER.get("referer_loyalty", ""),
+            verbose=verbose,
+        )
+        data["operationId"] = refs[headers[0]]
+        self.save_data_to_file(
+            data,
+            f"{date_time_str}-{CarrefourAccountAPIHandler.BRAND_NAME}_loyalty_operation_{refs[headers[0]]}_details.json",
         )
 
     @staticmethod
@@ -616,7 +814,7 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
         base_url: str,
         input_file: str,
         criterion: str = datetime.now().strftime("%Y%m%d"),
-        is_online: bool = False,
+        type: str = 'receipt',
         verbose: bool = False,
     ) -> None:
         """
@@ -628,11 +826,15 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
             is_online (bool): Whether to fetch data from online purchases or in-store.
             verbose (bool): Whether to print detailed logs.
         """
-        headers = (
-            self.get_order_list_headers()
-            if is_online
-            else self.get_receipt_list_headers()
-        )
+        match type:
+            case 'receipt':
+                headers = self.get_order_list_headers()
+            case 'order':
+                headers = self.get_receipt_list_headers()
+            case 'loyalty':
+                headers = self.get_loyalty_list_headers()
+            case _:
+                raise ValueError("The type should be either 'receipt', 'order' or 'loyalty'.")
         with open(input_file, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
@@ -642,10 +844,15 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
                 # criterion based on id
                 if not row.get(headers[0]):
                     continue
-                if is_online:
-                    self.fetch_order_details(base_url, row, verbose=verbose)
-                else:
-                    self.fetch_receipt_details(base_url, row, verbose=verbose)
+                match type:
+                    case 'receipt':
+                        self.fetch_receipt_details(base_url, row, verbose=verbose)
+                    case 'order':
+                        self.fetch_order_details(base_url, row, verbose=verbose)
+                    case 'loyalty':
+                        self.fetch_loyalty_details(base_url, row, verbose=verbose)
+                    case _:
+                        self.fetch_receipt_details(base_url, row, verbose=verbose)
 
     @staticmethod
     def check_loyalty_params(params: Dict[str, Any]) -> None:
@@ -657,10 +864,7 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
             ValueError: If any required parameter is missing.
         """
         required_params = ["loyaltyCardNumber", "loyaltyCardType"]
-        for param in required_params:
-            if param not in params:
-                raise ValueError(f"Missing required parameter: {param}")
-        logger.info("All required parameters are present.")
+        AccountAPIHandler.check_params(params, required_params)
 
     @staticmethod
     def check_order_params(params: Dict[str, Any]) -> None:
@@ -672,10 +876,19 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
             ValueError: If any required parameter is missing.
         """
         required_params = ["startDate", "endDate"]
-        for param in required_params:
-            if param not in params:
-                raise ValueError(f"Missing required parameter: {param}")
-        logger.info("All required parameters are present.")
+        AccountAPIHandler.check_params(params, required_params)
+
+    @staticmethod
+    def check_loyalty_transactions_params(params: Dict[str, Any]) -> None:
+        """
+        Validate required parameters.
+        Args:
+            params (Dict[str, Any]): Parameters to validate.
+        Raises:
+            ValueError: If any required parameter is missing.
+        """
+        required_params = ["date"]
+        AccountAPIHandler.check_params(params, required_params)
 
     @staticmethod
     def check_receipt_refs(params: Dict[str, Any]) -> None:
@@ -687,10 +900,7 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
             ValueError: If any required parameter is missing.
         """
         required_params = ["gln", "dateKey", "receiptNumber"]
-        for param in required_params:
-            if param not in params:
-                raise ValueError(f"Missing required parameter: {param}")
-        logger.info("All required parameters are present.")
+        AccountAPIHandler.check_params(params, required_params)
 
     @staticmethod
     def check_order_refs(params: Dict[str, Any]) -> None:
@@ -702,10 +912,19 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
             ValueError: If any required parameter is missing.
         """
         required_params = ["orderNumber"]
-        for param in required_params:
-            if param not in params:
-                raise ValueError(f"Missing required parameter: {param}")
-        logger.info("All required parameters are present.")
+        AccountAPIHandler.check_params(params, required_params)
+
+    @staticmethod
+    def check_loyalty_refs(params: Dict[str, Any]) -> None:
+        """
+        Validate required parameters.
+        Args:
+            params (Dict[str, Any]): Parameters to validate.
+        Raises:
+            ValueError: If any required parameter is missing.
+        """
+        required_params = ["operationId"]
+        AccountAPIHandler.check_params(params, required_params)
 
     @staticmethod
     def get_receipt_list_headers() -> List[str]:
@@ -724,6 +943,15 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
             Dict[str, Any]: Headers for the receipt list.
         """
         return ["orderNumber"]
+
+    @staticmethod
+    def get_loyalty_list_headers() -> List[str]:
+        """
+        Get headers for the receipt list.
+        Returns:
+            Dict[str, Any]: Headers for the receipt list.
+        """
+        return ["operationId"]
 
 
 def main_store():
@@ -752,62 +980,87 @@ def main_store():
     handler.fetch_all_receipts(api_url, params_pass, verbose=False)
 
     # Step 3: Extract receipt IDs
-    # handler.extract_receipts_ids(
-    #     criterion1=f"{BRAND}_receipt_",
-    #     criterion2=datetime.now().strftime("%Y%m%d"),
-    #     output_file="data/receipts_ids.csv",
-    # )
-    handler.extract_orders_ids(
-        criterion1=f"{CarrefourAccountAPIHandler.BRAND_NAME}_order_",
+    handler.extract_receipts_ids(
+        criterion1=f"{CarrefourAccountAPIHandler.BRAND_NAME}_receipts_",
         criterion2=datetime.now().strftime("%Y%m%d"),
-        output_file="data/orders_ids.csv",
+        output_file="data/receipts_ids.csv",
     )
-    # CarrefourAccountAPIHandler.remove_duplicates_from_list("data/receipts_ids.csv")
-    CarrefourAccountAPIHandler.remove_duplicates_from_list("data/orders_ids.csv")
+    CarrefourAccountAPIHandler.remove_duplicates_from_list("data/receipts_ids.csv")
 
     # Step 4: Fetch receipt details
     handler.fetch_details_from_file(
         base_url=api_details_url,
-        input_file="data/orders_ids.csv",
+        input_file="data/receipts_ids.csv",
         criterion=datetime.now().strftime("%Y%m%d"),
-        is_online=True,
+        type='receipt',
         verbose=False,
     )
 
 
 def main_drive():
+    """
+    Note: It may also extract CLICK AND COLLECT items
+    """
     api_url = "https://www.carrefour.fr/api/user/orders"
     api_details_url = "https://www.carrefour.fr/api/user/orders"
     cookies_file = "cookies.txt"
-    end_date = datetime.now().strftime("%Y-%m-%d") # YYYY-MM-DD
+    end_date = datetime.now().strftime("%Y-%m-%d")  # YYYY-MM-DD
+    # datetime string format: use unquote to decode URL-encoded string
     params_drive = {
-        "startDate": "2022-01-01T00%3A00%3A00.000Z", # perculiar filter in carrefour.fr
-        "endDate": f"{end_date}T00%3A00%3A00.000",
+        "startDate": unquote(
+            "2022-01-01T00%3A00%3A00.000Z"
+        ),  # peculiar filter in carrefour.fr
+        "endDate": unquote(f"{end_date}T00%3A00%3A00.000Z"),
     }
 
     # Initialize the handler
     handler = CarrefourAccountAPIHandler(cookies_file=cookies_file)
 
-    # # Step 1: Perform login
-    # handler.perform_login("https://www.carrefour.fr/login")
+    # # # Step 1: Perform login
+    # # handler.perform_login("https://www.carrefour.fr/login")
 
-    # Step 2: Fetch paginated data or whole data
-    handler.fetch_all_receipts(api_url, params_drive, verbose=False)
-    # handler.fetch_all_receipts(api_url, params_pass, verbose=False)
+    # # Step 2: Fetch paginated data or whole data
+    # handler.fetch_all_orders(api_url, params_drive, verbose=False)
+    # # handler.fetch_all_receipts(api_url, params_pass, verbose=False)
 
-    # Step 3: Extract receipt IDs
-    handler.extract_orders_ids(
-        criterion1=f"{CarrefourAccountAPIHandler.BRAND_NAME}_order_",
-        criterion2=datetime.now().strftime("%Y%m%d"),
-        output_file="data/orders_ids.csv",
-    )
-    CarrefourAccountAPIHandler.remove_duplicates_from_list("data/orders_ids.csv")
+    # # Step 3: Extract order IDs
+    # handler.extract_orders_ids(
+    #     criterion1=f"{CarrefourAccountAPIHandler.BRAND_NAME}_orders_",
+    #     criterion2=datetime.now().strftime("%Y%m%d"),
+    #     output_file="data/orders_ids.csv",
+    # )
+    # CarrefourAccountAPIHandler.remove_duplicates_from_list("data/orders_ids.csv")
 
     # Step 4: Fetch receipt details
     handler.fetch_details_from_file(
         base_url=api_details_url,
         input_file="data/orders_ids.csv",
         criterion=datetime.now().strftime("%Y%m%d"),
+        type='order',
+        verbose=False,
+    )
+
+
+def main_loyalty():
+    api_url = "https://www.carrefour.fr/api/user/secured/loyalty/transactions"
+    api_details_url = "https://www.carrefour.fr/api/user/secured/loyalty/transactions"
+    cookies_file = "cookies.txt"
+
+    params = {"date": "04/01/2022"}
+    # Initialize the handler
+    handler = CarrefourAccountAPIHandler(cookies_file=cookies_file)
+    # handler.fetch_all_loyalty(api_url, params)
+    # handler.extract_loyalty_details(
+    #     criterion1=f"{CarrefourAccountAPIHandler.BRAND_NAME}_loyalty_transactions",
+    #     criterion2="20250506",
+    #     output_file="data/loyalty_ids.csv",
+    # )
+    # Step 4: Fetch receipt details
+    handler.fetch_details_from_file(
+        base_url=api_details_url,
+        input_file="data/loyalty_ids.csv",
+        criterion="20250506",
+        type="loyalty",
         verbose=False,
     )
 
@@ -815,4 +1068,5 @@ def main_drive():
 # Main execution
 if __name__ == "__main__":
     # main_store()
-    main_drive()
+    # main_drive()
+    main_loyalty()

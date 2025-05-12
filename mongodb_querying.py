@@ -1,14 +1,13 @@
-from datetime import datetime
 import logging
 from pymongo import MongoClient
-from pymongo.database import Database
-from pymongo.collection import Collection
-from pymongo.errors import BulkWriteError
-import json
-from pathlib import Path
 from typing import List, Dict, Any
 
+from mongodb_builder import get_collection, get_database
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
 import pandas as pd
+import seaborn as sns
+
 
 # Configure logging
 logging.basicConfig(
@@ -16,208 +15,972 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
-def get_client(uri: str) -> MongoClient:
-    """
-    This function returns a MongoClient object.
-    :param uri: MongoDB connection string
-    :return: MongoClient object
-    """
-    # Create a connection using MongoClient. You can import MongoClient or use pymongo.MongoClient
-    client = MongoClient(uri)
-
-    # Print the client object
-    logger.info(f"MongoDB Client: {client}")
-
-    return client
+# Provide the mongodb atlas url to connect python to mongodb using pymongo
+# CONNECTION_STRING = "mongodb+srv://user:pass@cluster.mongodb.net/myFirstDatabase"
+CONNECTION_STRING = "mongodb://localhost:27017/"
 
 
-def get_database(client: MongoClient, db_name: str) -> Database:
-    """
-    This function returns a database connection.
-    :param client: MongoDB client object
-    :param db_name: Name of the database to connect to
-    :return: database object
-    """
-    # Create the database for our example (we will use the same database throughout the tutorial)
-    logger.info(f"Connecting to database: {db_name}")
-    return client[db_name]
+# Carrefour Constants
+BAG_EAN = "9713236189234"
+STORE_ID = "0525-150-29"
 
 
-# # This is added so that many files can reuse the function get_database()
-# if __name__ == "__main__":
+# Pipeline in order to query the collection
+pipeline_summary = [
+    # Step 1: Extract year and month from "attributes.dateKey"
+    {
+        "$addFields": {
+            "year": {"$substr": ["$attributes.dateKey", 0, 4]},  # Extract year
+            "month": {"$substr": ["$attributes.dateKey", 4, 2]},  # Extract month
+            "yearMonthDay": {
+                "$toDate": {
+                    # Convert to date format YYYY-MM-DD
+                    "$concat": [
+                        {"$substr": ["$attributes.dateKey", 0, 4]},
+                        "-",
+                        {"$substr": ["$attributes.dateKey", 4, 2]},
+                        "-01",
+                    ]
+                }
+            },
+        }
+    },
+    # Step 2: Group by year and month, and calculate the total amount
+    {
+        "$group": {
+            "_id": {"year": "$year", "month": "$month"},  # Group by year and month
+            "count": {"$sum": 1},  # Count the number of documents for each group
+            "totalAmountBeforeDiscount": {
+                "$sum": "$attributes.totalAmountBeforeDiscount"
+            },
+            "totalAmountImmediateDiscount": {
+                "$sum": "$attributes.totalAmountImmediateDiscount"
+            },
+            "totalAmountDeferredDiscount": {
+                "$sum": "$attributes.totalAmountDeferredDiscount"
+            },
+            "totalPaidAmount": {
+                "$sum": "$attributes.totalPaidAmount"
+            },  # Sum up the totalPaidAmount,
+            "yearMonthDay": {"$first": "$yearMonthDay"},  # Convert yearMonthDay to date
+        }
+    },
+    # Step 3: Project the fields to include in the final output
+    {
+        "$project": {
+            "_id": 0,
+            "year": "$_id.year",
+            "month": "$_id.month",
+            "count": "$count",
+            "totalAmountBeforeDiscount": "$totalAmountBeforeDiscount",
+            "totalAmountImmediateDiscount": "$totalAmountImmediateDiscount",
+            "totalAmountDeferredDiscount": "$totalAmountDeferredDiscount",
+            "totalPaidAmount": "$totalPaidAmount",
+            "yearMonthDay": "$yearMonthDay",  # Include yearMonthDay for plotting
+        }
+    },
+    # Step 4: Sort the results by year and month
+    {"$sort": {"year": -1, "month": -1}},
+]
 
-#    # Get the database
-#    dbname = get_database()
+# Define the aggregation pipeline
+pipeline_extracts = [
+    {
+        "$unwind": {
+            "path": "$attributes.products.coupon",
+            "preserveNullAndEmptyArrays": True,
+        }
+    },
+    {
+        "$group": {
+            "_id": "$_id",
+            "dateKey": {"$first": "$attributes.dateKey"},
+            "totalAmountBeforeDiscount": {
+                "$first": "$attributes.totalAmountBeforeDiscount"
+            },
+            "couponDiscount": {"$sum": "$attributes.products.coupon.immediateDiscount"},
+            "totalAmountImmediateDiscount": {
+                "$first": "$attributes.totalAmountImmediateDiscount"
+            },
+            "totalAmountDeferredDiscount": {
+                "$first": "$attributes.totalAmountDeferredDiscount"
+            },
+            "totalPaidAmount": {"$first": "$attributes.totalPaidAmount"},
+            "paymentInfo": {"$first": "$attributes.paymentInfo"},
+        }
+    },
+    {"$unwind": {"path": "$paymentInfo", "preserveNullAndEmptyArrays": True}},
+    {
+        "$group": {
+            "_id": {
+                "id": "$_id",
+                "paymentChoice": "$paymentInfo.choice",
+            },
+            "dateKey": {"$first": "$dateKey"},
+            "totalAmountBeforeDiscount": {"$first": "$totalAmountBeforeDiscount"},
+            "couponDiscount": {"$first": "$couponDiscount"},
+            "totalAmountImmediateDiscount": {"$first": "$totalAmountImmediateDiscount"},
+            "totalAmountDeferredDiscount": {"$first": "$totalAmountDeferredDiscount"},
+            "totalPaidAmount": {"$first": "$totalPaidAmount"},
+            "paymentAmount": {"$sum": "$paymentInfo.amount"},
+        }
+    },
+    {
+        "$project": {
+            "_id": 0,
+            "id": "$_id.id",
+            "dateKey": "$dateKey",
+            "paymentChoice": "$_id.paymentChoice",
+            "totalAmountBeforeDiscount": "$totalAmountBeforeDiscount",
+            "couponDiscount": "$couponDiscount",
+            "totalAmountImmediateDiscount": "$totalAmountImmediateDiscount",
+            "totalAmountDeferredDiscount": "$totalAmountDeferredDiscount",
+            "totalPaidAmount": "$totalPaidAmount",
+            "paymentAmount": "$paymentAmount",
+        }
+    },
+    {
+        "$sort": {
+            "dateKey": -1,
+            "id": -1,
+            "paymentChoice": 1,
+        }
+    },
+]
+
+pipeline_receipts = [
+    # First pipeline: Process receipts data
+    {
+        "$unwind": {
+            "path": "$attributes.products.coupon",
+            "preserveNullAndEmptyArrays": True,
+        }
+    },
+    {
+        "$group": {
+            "_id": "$_id",
+            "dateKey": {"$first": "$attributes.dateKey"},
+            "totalAmountBeforeDiscount": {
+                "$first": "$attributes.totalAmountBeforeDiscount"
+            },
+            "couponDiscount": {"$sum": "$attributes.products.coupon.immediateDiscount"},
+            "totalAmountImmediateDiscount": {
+                "$first": "$attributes.totalAmountImmediateDiscount"
+            },
+            "totalAmountDeferredDiscount": {
+                "$first": "$attributes.totalAmountDeferredDiscount"
+            },
+            "totalPaidAmount": {"$first": "$attributes.totalPaidAmount"},
+            "vats": {"$first": "$attributes.vats"},
+            "paymentInfo": {"$first": "$attributes.paymentInfo"},
+        }
+    },
+    {
+        "$unwind": {
+            "path": "$vats",
+            "preserveNullAndEmptyArrays": True,
+        }
+    },
+    {
+        "$group": {
+            "_id": "$_id",
+            "dateKey": {"$first": "$dateKey"},
+            "totalAmountBeforeDiscount": {"$first": "$totalAmountBeforeDiscount"},
+            "couponDiscount": {"$first": "$couponDiscount"},
+            "totalAmountImmediateDiscount": {"$first": "$totalAmountImmediateDiscount"},
+            "totalAmountDeferredDiscount": {"$first": "$totalAmountDeferredDiscount"},
+            "totalPaidAmount": {"$first": "$totalPaidAmount"},
+            "paymentInfo": {"$first": "$paymentInfo"},
+            "vatTotalProductsAt20" : {"$first": { "$cond": [ { "$eq" : ["$vats.vatPercentage", "20.0"]}, "$vats.vatTotalProducts", 0]}},
+            "vatTotalProductsAt5" : {"$first": { "$cond": [ { "$eq" : ["$vats.vatPercentage", "5.5"]}, "$vats.vatTotalProducts", 0]}},
+            "vatAt20": {
+                "$sum": {
+                    "$cond": {
+                        "if" : {"$eq": ["$vats.vatPercentage", "20.0"]},
+                        "then" : "$vats.vatAmount",
+                        "else" : 0,
+                    }
+                }
+            },
+            "vatAt5": {
+                "$sum": {
+                    "$cond": {
+                        "if" : {"$eq": ["$vats.vatPercentage", "5.5"]},
+                        "then" : "$vats.vatAmount",
+                        "else" : 0,
+                    }
+                }
+            }
+        }
+    },
+    {"$unwind": {"path": "$paymentInfo", "preserveNullAndEmptyArrays": True}},
+    {
+        "$group": {
+            "_id": {
+                "id": "$_id", 
+                "paymentChoice": "$paymentInfo.choice"
+            },
+            "dateKey": {"$first": "$dateKey"},
+            "totalAmountBeforeDiscount": {"$first": "$totalAmountBeforeDiscount"},
+            "couponDiscount": {"$first": "$couponDiscount"},
+            "totalAmountImmediateDiscount": {"$first": "$totalAmountImmediateDiscount"},
+            "totalAmountDeferredDiscount": {"$first": "$totalAmountDeferredDiscount"},
+            "totalPaidAmount": {"$first": "$totalPaidAmount"},
+            "vatTotalProductsAt20" : {"$first": "$vatTotalProductsAt20"},
+            "vatTotalProductsAt5" : {"$first": "$vatTotalProductsAt5"},
+            "vatAt5": {"$first": "$vatAt5"},
+            "vatAt20": {"$first": "$vatAt20"},
+            "paymentAmount": {"$sum": "$paymentInfo.amount"},
+        }
+    },
+    
+    {"$addFields": {"recordType": "receipt", "totalEarnedAmount": 0}},
+    {
+        "$project": {
+            "_id": 0,
+            "id": "$_id.id",
+            "dateKey": "$dateKey",
+            "recordType": "$recordType",
+            "paymentChoice": "$_id.paymentChoice",
+            "totalAmountBeforeDiscount": "$totalAmountBeforeDiscount",
+            "couponDiscount": "$couponDiscount",
+            "totalAmountImmediateDiscount": "$totalAmountImmediateDiscount",
+            "totalAmountDeferredDiscount": "$totalAmountDeferredDiscount",
+            "totalEarnedAmount": "$totalEarnedAmount",
+            "totalPaidAmount": "$totalPaidAmount",
+            "vatTotalProductsAt20" : {"$ifNull": ["$vatTotalProductsAt20", 0]},
+            "vatTotalProductsAt5" : {"$ifNull": ["$vatTotalProductsAt5", 0]},
+            "vatAt5": "$vatAt5",
+            "vatAt20": "$vatAt20",
+            "paymentAmount": "$paymentAmount",
+        }
+    },
+]
+
+# Define the pipeline for the 'receipts' collection
+pipeline_all = [
+    # First pipeline: Process receipts data
+    {
+        "$unwind": {
+            "path": "$attributes.products.coupon",
+            "preserveNullAndEmptyArrays": True,
+        }
+    },
+    {
+        "$group": {
+            "_id": "$_id",
+            "dateKey": {"$first": "$attributes.dateKey"},
+            "totalAmountBeforeDiscount": {
+                "$first": "$attributes.totalAmountBeforeDiscount"
+            },
+            "couponDiscount": {"$sum": "$attributes.products.coupon.immediateDiscount"},
+            "totalAmountImmediateDiscount": {
+                "$first": "$attributes.totalAmountImmediateDiscount"
+            },
+            "totalAmountDeferredDiscount": {
+                "$first": "$attributes.totalAmountDeferredDiscount"
+            },
+            "totalPaidAmount": {"$first": "$attributes.totalPaidAmount"},
+            "vats": {"$first": "$attributes.vats"},
+            "paymentInfo": {"$first": "$attributes.paymentInfo"},
+        }
+    },
+    {
+        "$unwind": {
+            "path": "$vats",
+            "preserveNullAndEmptyArrays": True,
+        }
+    },
+    {
+        "$group": {
+            "_id": "$_id",
+            "dateKey": {"$first": "$dateKey"},
+            "totalAmountBeforeDiscount": {"$first": "$totalAmountBeforeDiscount"},
+            "couponDiscount": {"$first": "$couponDiscount"},
+            "totalAmountImmediateDiscount": {"$first": "$totalAmountImmediateDiscount"},
+            "totalAmountDeferredDiscount": {"$first": "$totalAmountDeferredDiscount"},
+            "totalPaidAmount": {"$first": "$totalPaidAmount"},
+            "paymentInfo": {"$first": "$paymentInfo"},
+            "vatTotalProductsAt20" : {"$sum": { "$cond": [ { "$eq" : ["$vats.vatPercentage", "20.0"]}, "$vats.vatTotalProducts", 0]}},
+            "vatTotalProductsAt5" : {"$sum": { "$cond": [ { "$eq" : ["$vats.vatPercentage", "5.5"]}, "$vats.vatTotalProducts", 0]}},
+            "vatTotalProductsAt10" : {"$sum": { "$cond": [ { "$eq" : ["$vats.vatPercentage", "10.0"]}, "$vats.vatTotalProducts", 0]}},
+            "vatAt10": {
+                "$sum": {
+                    "$cond": {
+                        "if" : {"$eq": ["$vats.vatPercentage", "10.0"]},
+                        "then" : "$vats.vatAmount",
+                        "else" : 0,
+                    }
+                }
+            },
+            "vatAt20": {
+                "$sum": {
+                    "$cond": {
+                        "if" : {"$eq": ["$vats.vatPercentage", "20.0"]},
+                        "then" : "$vats.vatAmount",
+                        "else" : 0,
+                    }
+                }
+            },
+            "vatAt5": {
+                "$sum": {
+                    "$cond": {
+                        "if" : {"$eq": ["$vats.vatPercentage", "5.5"]},
+                        "then" : "$vats.vatAmount",
+                        "else" : 0,
+                    }
+                }
+            }
+        }
+    },
+    {"$unwind": {"path": "$paymentInfo", "preserveNullAndEmptyArrays": True}},
+    {
+        "$group": {
+            "_id": {
+                "id": "$_id", 
+                "paymentChoice": "$paymentInfo.choice"
+            },
+            "dateKey": {"$first": "$dateKey"},
+            "totalAmountBeforeDiscount": {"$first": "$totalAmountBeforeDiscount"},
+            "couponDiscount": {"$first": "$couponDiscount"},
+            "totalAmountImmediateDiscount": {"$first": "$totalAmountImmediateDiscount"},
+            "totalAmountDeferredDiscount": {"$first": "$totalAmountDeferredDiscount"},
+            "totalPaidAmount": {"$first": "$totalPaidAmount"},
+            "vatTotalProductsAt20" : {"$first": "$vatTotalProductsAt20"},
+            "vatTotalProductsAt5" : {"$first": "$vatTotalProductsAt5"},
+            "vatTotalProductsAt10" : {"$first": "$vatTotalProductsAt10"},
+            "vatAt5": {"$first": "$vatAt5"},
+            "vatAt20": {"$first": "$vatAt20"},
+            "vatAt10" : {"$first" : "$vatAt10"},
+            "paymentAmount": {"$sum": "$paymentInfo.amount"},
+        }
+    },
+    
+    {"$addFields": {"recordType": "receipt", "totalEarnedAmount": 0}},
+    {
+        "$project": {
+            "_id": 0,
+            "id": "$_id.id",
+            "dateKey": "$dateKey",
+            "recordType": "$recordType",
+            "paymentChoice": "$_id.paymentChoice",
+            "totalAmountBeforeDiscount": "$totalAmountBeforeDiscount",
+            "couponDiscount": "$couponDiscount",
+            "totalAmountImmediateDiscount": "$totalAmountImmediateDiscount",
+            "totalAmountDeferredDiscount": "$totalAmountDeferredDiscount",
+            "totalEarnedAmount": "$totalEarnedAmount",
+            "totalPaidAmount": "$totalPaidAmount",
+            "vatTotalProductsAt20" : "$vatTotalProductsAt20",
+            "vatTotalProductsAt5" : "$vatTotalProductsAt5",
+            "vatTotalProductsAt10" : "$vatTotalProductsAt10",
+            "vatAt5": "$vatAt5",
+            "vatAt20": "$vatAt20",
+            "vatAt10" : "$vatAt10",
+            "paymentAmount": "$paymentAmount",
+        }
+    },
+    # Union with orders data
+    {
+        "$unionWith": {
+            "coll": "orders",
+            "pipeline": [
+                # Second pipeline: Process orders data
+                {
+                    "$addFields": {
+                        "dateKey": {
+                            "$concat": [
+                                {"$substr": ["$attributes.date", 0, 4]},
+                                {"$substr": ["$attributes.date", 5, 2]},
+                                {"$substr": ["$attributes.date", 8, 2]},
+                            ]
+                        }
+                    }
+                },
+                {
+                    "$unwind": {
+                        "path": "$attributes.promotionCodes",
+                        "preserveNullAndEmptyArrays": True,
+                    }
+                },
+                {"$match": {"attributes.promotionCodes": {"$ne": "eLOYALTY"}}},
+                {
+                    "$group": {
+                        "_id": "$attributes.orderNumber",
+                        "dateKey": {"$first": "$dateKey"},
+                        "couponDiscount": {"$sum": "$attributes.promotionCodes.amount"},
+                        "paidAmount": {"$first": "$attributes.totalAmount"},
+                        "immediateDiscount": {
+                            "$first": "$attributes.immediateDiscountAmount"
+                        },
+                        "totalEarnedAmount": {
+                            "$first": "$attributes.totalEarnedAmount"
+                        },
+                        "vatAt5": {"$first": "$attributes.vatAt5"},
+                        "vatAt20": {"$first": "$attributes.vatAt20"},
+                        "paymentInfo": {"$first": "$attributes.paymentInfos"},
+                        "productList": {"$first": "$attributes.productList"},
+                    }
+                },
+                {
+                    "$unwind": {
+                        "path": "$productList.categories",
+                        "preserveNullAndEmptyArrays": True,
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": "$_id",
+                        "dateKey": {"$first": "$dateKey"},
+                        "couponDiscount": {"$first": "$couponDiscount"},
+                        "paidAmount": {"$first": "$paidAmount"},
+                        "immediateDiscount": {"$first": "$immediateDiscount"},
+                        "totalEarnedAmount": {"$first": "$totalEarnedAmount"},
+                        "vatAt5": {"$first": "$vatAt5"},
+                        "vatAt20": {"$first": "$vatAt20"},
+                        "paymentInfo": {"$first": "$paymentInfo"},
+                        "bagCat": {"$last": "$productList.categories"},
+                    }
+                },
+                {
+                    "$unwind": {
+                        "path": "$bagCat.products",
+                        "preserveNullAndEmptyArrays": True,
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": "$_id",
+                        "dateKey": {"$first": "$dateKey"},
+                        "couponDiscount": {"$first": "$couponDiscount"},
+                        "paidAmount": {"$first": "$paidAmount"},
+                        "immediateDiscount": {"$first": "$immediateDiscount"},
+                        "totalEarnedAmount": {"$first": "$totalEarnedAmount"},
+                        "vatAt5": {"$first": "$vatAt5"},
+                        "vatAt20": {"$first": "$vatAt20"},
+                        "paymentInfo": {"$first": "$paymentInfo"},
+                        "bagProd": {"$first": "$bagCat.products"},
+                    }
+                },
+                {
+                    "$addFields": {
+                        "totalAmountBeforeDiscount": {
+                            "$add": [
+                                "$paidAmount",
+                                "$couponDiscount",
+                                {"$ifNull": ["$immediateDiscount", 0]},
+                            ]
+                        },
+                        "totalAmountImmediateDiscount": {
+                            "$add": [
+                                "$couponDiscount",
+                                {"$ifNull": ["$immediateDiscount", 0]},
+                            ]
+                        },
+                        "totalPaidAmount": {
+                            "$subtract": [
+                                "$paidAmount",
+                                {
+                                    "$ifNull": [
+                                        f"$bagProd.attributes.offers.{BAG_EAN}.{STORE_ID}.attributes.price.totalPrice.refunded",
+                                        0,
+                                    ]
+                                },
+                            ]
+                        },
+                    }
+                },
+                {
+                    "$unwind": {
+                        "path": "$paymentInfo",
+                        "preserveNullAndEmptyArrays": True,
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": {"id": "$_id", "paymentChoice": "$paymentInfo.choice"},
+                        "dateKey": {"$first": "$dateKey"},
+                        "totalAmountBeforeDiscount": {
+                            "$first": "$totalAmountBeforeDiscount"
+                        },
+                        "couponDiscount": {"$first": "$couponDiscount"},
+                        "totalAmountImmediateDiscount": {
+                            "$first": "$totalAmountImmediateDiscount"
+                        },
+                        "totalEarnedAmount": {"$first": "$totalEarnedAmount"},
+                        "totalPaidAmount": {"$first": "$totalPaidAmount"},
+                        "vatAt5": {"$first": "$vatAt5"},
+                        "vatAt20": {"$first": "$vatAt20"},
+                        "paymentAmount": {"$sum": "$paymentInfo.amount"},
+                    }
+                },
+                {"$addFields": {"recordType": "order", "totalAmountDeferredDiscount": 0, "vatTotalProductsAt10" : 0, "vatAt10" : 0}},
+                {
+                    "$project": {
+                        "_id": 0,
+                        "id": "$_id.id",
+                        "dateKey": "$dateKey",
+                        "recordType": "$recordType",
+                        "paymentChoice": "$_id.paymentChoice",
+                        "totalAmountBeforeDiscount": "$totalAmountBeforeDiscount",
+                        "couponDiscount": {"$multiply": ["$couponDiscount", -1]},
+                        "totalAmountImmediateDiscount": {
+                            "$multiply": ["$totalAmountImmediateDiscount", -1]
+                        },
+                        "totalAmountDeferredDiscount": "$totalAmountDeferredDiscount",
+                        "totalEarnedAmount": "$totalEarnedAmount",
+                        "totalPaidAmount": "$totalPaidAmount",
+                        "vatTotalProductsAt20" : { "$multiply": ["$vatAt20", 6]},
+                        "vatTotalProductsAt5" : { "$multiply": ["$vatAt5", 1+100 / 5.5]},
+                        "vatTotalProductsAt10" : "$vatTotalProductsAt10",
+                        "vatAt5": "$vatAt5",
+                        "vatAt20": "$vatAt20",
+                        "vatAt10": "$vatAt10",
+                        "paymentAmount": "$paymentAmount",
+                    }
+                },
+            ],
+        }
+    },
+    # Final Sort: Mixed and sorted by dateKey, id, and paymentType
+    {"$sort": {"dateKey": -1, "id": -1, "paymentChoice": 1}},
+]
+
+# Perform the aggregation
+pipeline_loyalty = [
+    {"$unwind": {"path": "$history", "preserveNullAndEmptyArrays": True}},
+    {
+        "$project": {
+            "operationId": {"$toString": "$history.operationId"},  # Convert to string
+            "date": "$history.date",
+            "earned": "$history.earned",
+            "burned": "$history.burned"
+        }
+    },
+    {
+        "$lookup": {
+            "from": "loyaltyOperations",
+            "localField": "operationId",
+            "foreignField": "operationId",
+            "as": "operation"
+        }
+    },
+    {"$unwind": {"path": "$operation", "preserveNullAndEmptyArrays": True}},
+    {"$unwind": {"path": "$operation.data", "preserveNullAndEmptyArrays": True}},
+    # {
+    #     "$match": {
+    #         "operation.data.attributes.itemRd": {"$exists": True, "$ne": ""}
+    #     }
+    # },
+    {
+        "$project": {
+            "_id": 0,
+            "operationId": "$operationId",
+            "date": "$date",
+            "earned": "$earned",
+            "burned": "$burned",
+            "itemLabel": "$operation.data.attributes.itemLabel",
+            "promotionLabel": "$operation.data.attributes.promotionLabel",
+            "itemRd": "$operation.data.attributes.itemRd",
+            "loyaltyOperation": "$operation.data.attributes.loyaltyOperation"
+        }
+    }
+]
+# Define the aggregation pipeline
+pipeline_prod = [
+    # 1st step: query from collection 'receipts'
+    {
+        "$unwind": {
+            "path": "$attributes.products.product",
+            "preserveNullAndEmptyArrays": True,
+        }
+    },
+    {
+        "$group": {
+            "_id": {
+                "dateKey": "$attributes.dateKey",
+                "productLabel": "$attributes.products.product.label",
+            },  # Group by product ID
+            "vatPercentage": {"$first": "$attributes.products.product.vatPercentage"},
+            "countVisits": {"$sum": 1},  # count the number of receipts per day
+            "totalQuantity": {
+                "$sum": "$attributes.products.product.quantity"
+            },  # Sum up the quantities for each product
+            "totalWeight": {
+                "$sum": "$attributes.products.product.weight"
+            },  # Sum up the quantities for each product
+            "unitPrice": {
+                "$avg": "$attributes.products.product.unitPrice"
+            },  # Average unit price per day
+            "totalPrice": {
+                "$sum": "$attributes.products.product.totalPrice"
+            },  # Total price per day
+            "totalImmediateDiscount": {
+                "$sum": "$attributes.products.product.immediateDiscount"
+            },  # total immediate discount for the day
+        }
+    },
+    {
+        "$addFields": {
+            "category": {
+                "$cond": {
+                    "if": {"$eq": ["$vatPercentage", "5.5"]},
+                    "then": "food",
+                    "else": "other",
+                }
+            },  # Food or non-food
+        }
+    },
+    {
+        "$project": {
+            "_id": 0,
+            "dateKey": "$_id.dateKey",
+            "recordType": "receipt",
+            "countVisits": "$countVisits",
+            "ean": "",
+            "cdbase": "",
+            "productLabel": "$_id.productLabel",
+            "slugProductLabel": "$_id.productLabel",
+            "category": "$category",
+            "subCategory": "",
+            "vatPercentage" : "$vatPercentage",
+            "totalQuantity": "$totalQuantity",
+            "totalWeight": "$totalWeight",
+            "unitPrice": "$unitPrice",
+            "totalPrice": "$totalPrice",
+            "totalImmediateDiscount": "$totalImmediateDiscount",
+        }
+    },
+    # Union with orders data
+    {
+        "$unionWith": {
+            "coll": "orders",
+            "pipeline": [
+                # Second pipeline: Process orders data
+                {
+                    "$addFields": {
+                        "dateKey": {
+                            "$concat": [
+                                {"$substr": ["$attributes.date", 0, 4]},
+                                {"$substr": ["$attributes.date", 5, 2]},
+                                {"$substr": ["$attributes.date", 8, 2]},
+                            ]
+                        }
+                    }
+                },
+                {
+                    "$unwind": {
+                        "path": "$attributes.productList.categories",
+                        "preserveNullAndEmptyArrays": True,
+                    }
+                },
+                {
+                    "$unwind": {
+                        "path": "$attributes.productList.categories.products",
+                        "preserveNullAndEmptyArrays": True,
+                    }
+                },
+                {
+                    "$project": {
+                        "dateKey": "$dateKey",
+                        "ean": "$attributes.productList.categories.products.attributes.ean",
+                        "cdbase": "$attributes.productList.categories.products.attributes.cdbase",
+                        "productLabel": "$attributes.productList.categories.products.attributes.title",
+                        "slugProductLabel": "$attributes.productList.categories.products.attributes.slug",
+                        "subCategory": "$attributes.productList.categories.products.attributes.category",
+                        "totalQuantity": "$attributes.productList.categories.products.attributes.quantity.delivered",
+                        "totalWeight": "$attributes.productList.categories.products.attributes.pickedQuantityPerWeight.value",
+                        "offers": "$attributes.productList.categories.products.attributes.offers",
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": {
+                            "dateKey": "$dateKey",
+                            "ean": "$ean",
+                        },  # Group by product ID
+                        "countVisits": {
+                            "$sum": 1
+                        },  # count the number of receipts per day
+                        "cdbase": {"$first": "$cdbase"},
+                        "productLabel": {"$first": "$productLabel"},
+                        "slugProductLabel": {"$first": "$slugProductLabel"},
+                        "subCategory": {"$first": "$subCategory"},
+                        "totalQuantity": {
+                            "$sum": "$totalQuantity"
+                        },  # Sum up the quantities for each product
+                        "totalWeight": {
+                            "$sum": "$totalWeight"
+                        },  # Sum up the quantities for each product
+                        # immediate discount issue howto?
+                        "unitPrice": {
+                            "$first": {
+                                "$getField": {
+                                    "field": "price",
+                                    "input": {
+                                        "$getField": {
+                                            "field": "price",
+                                            "input": {
+                                                "$getField": {
+                                                    "field": "attributes",
+                                                    "input": {
+                                                        "$getField": {
+                                                            "field": "v",
+                                                            "input": {
+                                                                "$arrayElemAt": [
+                                                                    {
+                                                                        "$objectToArray": {
+                                                                            "$getField": {
+                                                                                "field": "$ean",
+                                                                                "input": "$offers",
+                                                                            }
+                                                                        }
+                                                                    },
+                                                                    0,
+                                                                ]  # get the array under as v
+                                                            },
+                                                        }
+                                                    },
+                                                }
+                                            },
+                                        }
+                                    },
+                                }
+                            }
+                        },
+                        "totalPrice": {
+                            "$sum": {
+                                "$getField": {
+                                    "field": "delivered",
+                                    "input": {
+                                        "$getField": {
+                                            "field": "totalPrice",
+                                            "input": {
+                                                "$getField": {
+                                                    "field": "price",
+                                                    "input": {
+                                                        "$getField": {
+                                                            "field": "attributes",
+                                                            "input": {
+                                                                "$getField": {
+                                                                    "field": "v",
+                                                                    "input": {
+                                                                        "$arrayElemAt": [
+                                                                            {
+                                                                                "$objectToArray": {
+                                                                                    "$getField": {
+                                                                                        "field": "$ean",
+                                                                                        "input": "$offers",
+                                                                                    }
+                                                                                }
+                                                                            },
+                                                                            0,
+                                                                        ]  # get the array under as v
+                                                                    },
+                                                                }
+                                                            },
+                                                        }
+                                                    },
+                                                }
+                                            },
+                                        }
+                                    },
+                                }
+                            }
+                        },
+                        "totalImmediateDiscount": {
+                            "$sum": {
+                                "$getField": {
+                                    "field": "immediateDiscount",
+                                    "input": {
+                                        "$getField": {
+                                            "field": "totalPrice",
+                                            "input": {
+                                                "$getField": {
+                                                    "field": "price",
+                                                    "input": {
+                                                        "$getField": {
+                                                            "field": "attributes",
+                                                            "input": {
+                                                                "$getField": {
+                                                                    "field": "v",
+                                                                    "input": {
+                                                                        "$arrayElemAt": [
+                                                                            {
+                                                                                "$objectToArray": {
+                                                                                    "$getField": {
+                                                                                        "field": "$ean",
+                                                                                        "input": "$offers",
+                                                                                    }
+                                                                                }
+                                                                            },
+                                                                            0,
+                                                                        ]  # get the array under as v
+                                                                    },
+                                                                }
+                                                            },
+                                                        }
+                                                    },
+                                                }
+                                            },
+                                        }
+                                    },
+                                }
+                            }
+                        },
+                    }
+                },
+                {"$addFields": {"vatPercentage" : None}},
+                {
+                    "$project": {
+                        "_id": 0,
+                        "dateKey": "$_id.dateKey",
+                        "recordType": "order",
+                        "countVisits": "$countVisits",
+                        "ean": "$_id.ean",
+                        "cdbase": "$cdbase",
+                        "productLabel": "$productLabel",
+                        "slugProductLabel": "$slugProductLabel",
+                        "category": "",
+                        "subCategory": "$subCategory",
+                        "vatPercentage" : "$vatPercentage",
+                        "totalQuantity": "$totalQuantity",
+                        "totalWeight": "$totalWeight",
+                        "unitPrice": "$unitPrice",
+                        "totalPrice": "$totalPrice",
+                        "totalAmountImmediateDiscount": {
+                            "$multiply": ["$totalAmountImmediateDiscount", -1]
+                        }
+                    }
+                },
+            ],
+        }
+    },
+    {"$sort": {"dateKey": -1}}
+]
 
 
-def get_collection(db: Database, collection_name: str = "receipts") -> Collection:
-    """
-    This function returns a collection object.
-    :param db: MongoDB database object
-    :param collection_name: Name of the collection to connect to
-    :return: collection object
-    """
-    # Create a collection
-    collection = db[collection_name]
-
-    # Log the collection name
-    logger.info(f"Access to collection {collection_name}.")
-
-    return collection
-
-
-def insert_json_files(
-    collection: Collection,
-    directory: str,
-    criterion1: str = "carrefour_receipt_",
-    criterion2: str = "",
-    keep_ids=False,
-) -> None:
-    """
-    Insert JSON files into a MongoDB collection.
-    :param collection: MongoDB collection object
-    :param directory: Directory containing JSON files
-    :param criterion1: Criterion to filter files
-    :param criterion2: Additional criterion to filter files like date
-    :param keep_ids: Whether to keep the original IDs from the JSON files
-    Note: Limit insertion by criterion
-    """
-    list_data = []
-
-    for file in Path(directory).rglob(
-        f"{criterion2}*{criterion1}*.json"
-    ):  # even subfolders
-        with open(file) as f:
-            rec = json.load(f)
-            if not rec:
-                logger.warning(f"Empty record in file {file}")
-                continue
-            if isinstance(rec, list):
-                for item in rec:
-                    if keep_ids:
-                        item["_id"] = item.pop("id")
-                    list_data.append(item)
-            else:
-                if keep_ids:
-                    rec["_id"] = rec.pop("id")
-                list_data.append(rec)
-
-    try:
-        result = collection.insert_many(
-            list_data, ordered=False
-        )  # ordered=False to allow bulk insert even if some records fail
-    except BulkWriteError as bwe:
-        logger.error(f"Bulk write error: {bwe.details}")
-        raise
-    logger.info(f"Data inserted with record ids {result.inserted_ids}")
-
-
-def read_data(collection: Collection, n: int = 10):
-
-    # Read data from the collection
-    data = (
-        collection.find().limit(n) if n > 0 else collection.find()
-    )  # restrict to n records
-
-    # Print the data
-    for item in data:
-        print(item)
-
-
-def update_data(collection, query, new_values):
-    # Update data in the collection
-    result = collection.update_one(query, new_values)
-
-    # Log the number of documents updated
-    logger.info(f"Documents updated: {result.modified_count}")
-
-
-def delete_data(collection, query):
-
-    # Delete data from the collection
-    result = collection.delete_one(query)
-
-    # Log the number of documents deleted
-    logger.info(f"Documents deleted: {result.deleted_count}")
-
-
-def aggregate_and_unroll_to_dataframe(
-    collection: Collection, pipeline: List[str]
+def query_collection(
+    pipeline: List[Dict[str, Any]],
+    collection_name: str = "receipts",
+    db_name: str = "carrefour",
 ) -> pd.DataFrame:
     """
-    Get data from the collection as a pandas DataFrame.
-    :param collection: MongoDB collection object
-    :param pipeline: Aggregation pipeline to filter and transform data group by _id (which can be a nested structure)
-    :return: DataFrame containing the data
+    Aggregation query with pipeline via MongoDB client and return a DataFrame for further analysis
     """
-    # Read data from the collection using aggregation pipeline
-    data = list(collection.aggregate(pipeline))
 
-    # Convert to DataFrame
-    df = pd.DataFrame(data)
-
-    df = df._id.apply(pd.Series).join(
-        df.drop(columns=["_id"]), how="left"
-    )  # index-based join
-
+    with MongoClient(CONNECTION_STRING) as client:
+        # Get the database
+        db = get_database(client, db_name)
+        # Create a collection
+        collection = get_collection(db, collection_name=collection_name)
+        # Query the collection and save it to a DataFrame
+        results = collection.aggregate(pipeline)
+        df = pd.DataFrame(list(results))
+        if df.empty:
+            logger.warning("No result for this query. Please retry.")
+        else:
+            logger.info(f"Query successful with {len(df)} rows")
     return df
 
 
-def main_store():
-    # MongoDB connection string: setup local connection
-    CONNECTION_STRING = "mongodb://localhost:27017/"
-
-    # mongoclient compatible with context manager
-    with MongoClient(CONNECTION_STRING) as client:
-        # Get the database
-        db = get_database(client, "carrefour")
-
-        # Create a collection
-        collection = get_collection(db, collection_name="receipts")
-
-        # Insert JSON data
-        insert_json_files(
-            collection,
-            directory="data",
-            criterion1="carrefour_receipt_",
-            criterion2=datetime.now().strftime("%Y%m%d"),
-            keep_ids=True,
+def display_amounts(
+    df, col_amount: str = "totalPaidAmount", col_date: str = "dateKey", show_avg=True
+):
+    # df.plot(x='date', y=col_amount, kind='line', title='Total Paid Amount by Year and Month', marker='o')
+    # Format the X-axis to show Month-Year
+    plt.figure(figsize=(10, 6))
+    plt.plot(
+        df[col_date],
+        df[col_amount],
+        marker="o",
+        linestyle="-",
+        color="b",
+        label="Total Paid Amount",
+    )
+    if show_avg:
+        # Calculate the average total paid amount
+        average_amount = df[col_amount].mean()
+        # Add a horizontal line for the average
+        plt.axhline(
+            y=average_amount,
+            color="r",
+            linestyle="--",
+            linewidth=2,
+            label=f"Average {col_amount} ({average_amount:.2f})",
         )
 
-        # Read data
-        # read_data(collection, n=10)
+    # Format the X-axis
+    plt.gca().xaxis.set_major_formatter(
+        mdates.DateFormatter("%b %Y")
+    )  # Format as "Jan 2025"
+    plt.gca().xaxis.set_major_locator(mdates.MonthLocator())  # Show one tick per month
+    plt.xticks(rotation=45)  # Rotate labels for better readability
 
-    logger.info("MongoDB connection closed automatically.")
+    # Add labels and title
+    plt.title("Total Amounts by Month")
+    plt.xlabel("Month-Year")
+    plt.ylabel(col_amount)
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
 
 
-def main_drive():
-    # MongoDB connection string: setup local connection
-    CONNECTION_STRING = "mongodb://localhost:27017/"
+def main_amounts():
+    DISCOUNT_PERCENT_GIFT_CARD = 0.045  # around 5% since using MACIF avantages
+    FILEPATH = "data/20250501-carrefour_amounts.csv"
+    # dictionary matching payment choices and discount
+    PAYMENT_CHOICES = {
+        "Cagnotte fidélité" : 1, "eLOYALTY" : 1, "Bons de réduction" : 1, 
+        "Bons d'achat" : DISCOUNT_PERCENT_GIFT_CARD, "CARREFOUR_EPAY" : DISCOUNT_PERCENT_GIFT_CARD
+    }
+    df_amounts = query_collection(pipeline=pipeline_all)
+    # pivot to get the amounts associated to each payment choice
+    table_amounts = pd.pivot_table(
+        df_amounts,
+        index=[
+            col
+            for col in df_amounts.columns
+            if col not in ["paymentChoice", "paymentAmount"]
+        ],
+        columns="paymentChoice",
+        values="paymentAmount",
+        aggfunc="sum",
+        fill_value=0,
+    ).reset_index()
+    table_amounts.columns.name = None
+    table_amounts["dateKey"] = pd.to_datetime(table_amounts["dateKey"])
+    
+    table_amounts["totalTrueAmount"] = table_amounts["totalPaidAmount"]
+    for choice, discount in PAYMENT_CHOICES.items():
+        table_amounts["totalTrueAmount"] -= table_amounts[choice] * discount
+        
+    table_amounts.to_csv(path_or_buf=FILEPATH, index=False)
+    logger.info(f"Saved table amounts to {FILEPATH}")
+    # table_monthly = (
+    #     table_amounts.groupby(pd.Grouper(key="dateKey", freq="ME")).sum().reset_index()
+    # )
+    # display_amounts(table_monthly, col_amount="totalTrueAmount", col_date="dateKey")
 
-    # mongoclient compatible with context manager
-    with MongoClient(CONNECTION_STRING) as client:
-        # Get the database
-        db = get_database(client, "carrefour")
 
-        # Create a collection
-        collection = get_collection(db, collection_name="orders")
+def main_loyalty():
+    FILEPATH = "data/20250501-carrefour_loyalty.csv"
+    df_loyalty = query_collection(pipeline=pipeline_loyalty, collection_name="loyalty")
+    df_loyalty["date"] = pd.to_datetime(df_loyalty["date"].apply(lambda x: x[:10]))
+    df_loyalty.to_csv(path_or_buf=FILEPATH, index=False)
+    logger.info(f"Saved table amounts to {FILEPATH}")
 
-        # Insert JSON data
-        insert_json_files(
-            collection,
-            directory="data",
-            criterion1="carrefour_order_",
-            criterion2=datetime.now().strftime("%Y%m%d"),
-            keep_ids=True,
-        )
 
-        # Read data
-        # read_data(collection, n=10)
-
-    logger.info("MongoDB connection closed automatically.")
+def main_prods():
+    FILEPATH = "data/20250501-carrefour_prods.csv"
+    df_receipts_prod = query_collection(pipeline_prod, collection_name="receipts")
+    df_receipts_prod["dateKey"] = pd.to_datetime(df_receipts_prod["dateKey"])
+    df_receipts_prod.to_csv(path_or_buf=FILEPATH, index=False)
+    logger.info(f"Saved table amounts to {FILEPATH}")
 
 
 if __name__ == "__main__":
     # main_store()
-    main_drive()
+    # main_amounts()
+    # main_prods()
+    main_loyalty()

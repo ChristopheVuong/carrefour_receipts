@@ -12,15 +12,30 @@ Analysis of own Carrefour receipts
 ## **Carrefour Receipt Analysis Project**  
 **Objective**: Extract, structure, and analyze personal Carrefour receipt data to uncover spending patterns and trends.
 
+KPIs:
+- monitor the true savings by engaging in the loyalty strategy
+- reduce waste by controlling the purchase food quantity
+- analyze food consumption to notice shifts over the years
+- see the impact of Covid on our consumption
+- analysis of how frequent we go to the mall
+- what is my average basket?
+- see the impact of Carrefour incentive to buy (using promotions discounts)
+- have a share of spending by categories.
+- monitor the frequencies of discounts.
+- monitor pipelines efficiency in terms of query execution, and resilience in terms of ease of adjustment in case of update of the API
+
+
 ---
 
 ### **1. Project Setup & Requirements**  
 - **Define scope** (actionable goals):  
-  - Extract receipts (orders, items, loyalty data) from Carrefour’s portal.
-  - Extract Drive orders from Carrefour's portal.
-  - Implement a consistent, sustainable extraction process in order to feed on a regular basis a MongoDB database consisting of JSON files with receipt or order details (not necessarily aligned).  
-  - Analyze spending trends (rolling averages, top products), category shares (share of food spending), and temporal patterns (price evolutions of essential items).  
-  - Build a Streamlit dashboard for visualization.  
+  - Extract receipts (orders, items, loyalty data) from Carrefour’s portal as documents.
+  - Extract Drive orders from Carrefour's portal as documents.
+  - Implement a consistent, sustainable extraction process in order to feed on a regular basis a MongoDB database consisting of JSON files with receipt or order details (not necessarily aligned using union operator and project operator).  
+  - Analyze spending trends (rolling averages, top products), category shares (share of food spending), and temporal patterns (price evolutions of essential items) with advanced tools like Pandas.
+  - Produce refined extracts with fine-grained queries in Pandas. 
+  - Create a chain of Python or Bash scripts that automate the process of scraping and feeding the MongoDB database in a consistent way (appropriate error logging and caution on database-related transactions) 
+  - Build a Streamlit dashboard for visualization and API endpoint then continuous integration with Dockerhub.  
 
 - **Tech Stack**:  
   - Python 3.10+ but Python 3.8+ should be enough.  
@@ -30,6 +45,9 @@ Analysis of own Carrefour receipts
   The project does not need special packages for its main functionality that is based on curl commands, csv writing and formatting.
   - Create a new conda environment and install dependency (Selenium, playwright, requests, httpx, Pymongo) with Python 3.10 or Python 3.11.
   - Use Poetry otherwise for this pure Python project.
+  - Use MongoDB Playground with Javascript to test queries on samples.
+  - Use Pymongo for interfacing MongoDB querying and Pandas extended querying and refinement of data.
+  - Use Docker for continuous integration.
 
 
 ---
@@ -83,11 +101,12 @@ The curl must be run on the same IP as you were loading the site with.
 #### **Database Design**  
 - **Storage strategy**:
   - Build a MongoDB database since the API response is in JSON format and can constitute a document database easy to query from with MongoDB. Use of NoSQL in the context of local data (collected from a mobile app or a laptop on a daily or weekly basis).
-  - Keep the stdout as it is (JSON file containing the receipt or order details) so that analysis by NoSQL querying is not constrained.     
+  - Keep the stdout as it is (JSON file containing the receipt or order details) so that analysis by NoSQL querying is not constrained. 
+  - Given a sample of 3 years, we have around 300 receipts / orders equivalent to $\approx 300 \times 30 = 9000$ rows (with overhead 10K rows max) and few columns (count on single hand). This can be handled with Pandas. The data scaling may become an issue if one consider receipts / orders from various sources. Still when restraining to an individual, it is likely not an issue if the consumption is "normal".
   - Use PySpark for distributed processing if data scales beyond 1M+ rows (only plausible for purchased items). Only about a thousand rows or less for order receipts (use Pandas). 
 - **Schema enforcement**:  
-  - Validate data types (e.g., `decimal` for amounts, `datetime` for timestamps).  
-  - Handle missing values (e.g., default `0` for discounts, payment info).  
+  - Validate data types (e.g., `decimal` for amounts, `datetime` for timestamps in Pandas).  
+  - Handle missing values (e.g., default `0` for discounts, payment info). This is done in MongoDB in aggregation pipeline.  
 
 #### Database connection
 
@@ -97,7 +116,12 @@ Then, run:
 ```bash
 brew services start mongodb-community
 ```
-This starts the connection to the database. For sake of simplicity, we employ a local database (e.g. `localhost:27017`).
+This starts the connection to the database. For sake of simplicity, we employ a local database (e.g. `localhost:27017` as connection string). Most script close the connection but it is recommended to check.
+
+When done, do not forget to run:
+```bash
+brew services stop mongodb-community
+```
 
    
 #### Querying
@@ -105,7 +129,11 @@ This starts the connection to the database. For sake of simplicity, we employ a 
 We use MQL (MongoDB Query Language) with the help of either MongoDB Atlas SQL Interface or Copilot for query statement based on prompt of query specifications. We have several approaches:
 - general querying: all the records with payment infos, and maybe summary of purchased products (for pie charts)
 - summary by month and year: total amount, total amount with VAT 5,5%
-- queries focused on products (different time granularity) with keywords`$unwind` and `$group` on the `products` key.
+- queries focused on products (different time granularity) with keywords `$unwind` and `$group` on the `products` key.
+
+The more complex operations such as joining and pivoting table should be deferred to **Pandas**, for example joining loyalty history and receipt details on a dateKey in a non-obvious way (several receipts with the same dateKey).
+
+The next step is to perform fuzzy join using the libraries `rapidfuzz` and `pandas` on the product labels in order to merge receipt, order and loyalty data.
 
 
 #### **Automation & CI/CD**  
@@ -133,7 +161,8 @@ We use MQL (MongoDB Query Language) with the help of either MongoDB Atlas SQL In
 - **Temporal trends**:  
   - Rolling averages (3M/6M/yearly) using Pandas window functions.  
   - Year-over-year spending comparisons.
-  - How much a year spending on non-food commodities? Filtering with VAT 20% (small amount not higher than 15-20 euros by unit).  
+  - How much a year spending on non-food commodities? Filtering with VAT 20% (small amount not higher than 15-20 euros by unit).
+  - Month with the most immediate discount? Reaction from year-to-year?  
 - **Behavioral trends**:
   - Periods of the year with higher spending on a sample of three-four years
   - Drive vs in-store: what one buys
@@ -144,7 +173,7 @@ We use MQL (MongoDB Query Language) with the help of either MongoDB Atlas SQL In
 - **Prices**  
    - Top 10 purchased products and evolutions of their prices
    - Evolutions of prices of main vegetables
-   - Meat prices
+   - Evolutions of meat prices
    - 
 - **Quantity**
    - How many kilograms of vegetables and fruits in average?
@@ -179,10 +208,17 @@ We use MQL (MongoDB Query Language) with the help of either MongoDB Atlas SQL In
 ---
 
 ### **6. Future Enhancements**  
-- **Advanced NLP**: Use spaCy to categorize unstructured product names.  
+- **Advanced NLP**: Use spaCy to categorize unstructured product names based on a sample of already categorized items from the Drive orders.
+- **Modification of schema**: Find a better representation of the documents so that querying does not rely on dynamic fields.  
 - **Real-time dashboards**: Integrate Kafka for live data streaming.  
+- **Optimization of database accesses**: Find a better calendar for database access and work on how many updates one want to accurately monitor the KPIs.
+- **Creation of a complete MongoDB pipeline** that is actionable right off the shelf. Use the full power of MongoDB.
+- Use of command-line for quick command without switching to separate application. Use of Git, etc.
+- Continuous deployment of database (Streamlit access to database).
 - **Cost optimization**: Migrate to AWS Glue/S3 for scalable storage if handling several loyalty cards (user accounts). Think of paying for efficient scraping (automation of login without the resort to browsers).
 - **OOP or imperative coding**: Understand the true purpose of coding with OOP in several use cases surrounding this project.  
+- Find other API endpoints that can enrich the database, especially product-related information such as `ean` and their categories (food, hygiene, or others).
+- Talk with Carrefour shareholders about possibility to integrate this work as a microservice or a feature in the new iteration of the app (patch such as Revanced for YouTube).
 
 ---
 
@@ -217,4 +253,8 @@ We use MQL (MongoDB Query Language) with the help of either MongoDB Atlas SQL In
 ### Analytics
 
 - https://blog.bruggen.com/2019/11/part-24-playing-with-carrefour-shopping.html
->>>>>>> c81defa (extraction pipeline receipts and pymongo)
+
+### Continuous integration
+
+- https://hub.docker.com/r/aminehy/docker-streamlit-app
+- https://www.liquibase.com/resources/guides/database-continuous-integration
