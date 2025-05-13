@@ -1,12 +1,13 @@
 from datetime import datetime
+import json
 import logging
+from pathlib import Path
+from typing import Dict, Any
+
 from pymongo import MongoClient
 from pymongo.database import Database
 from pymongo.collection import Collection
 from pymongo.errors import BulkWriteError
-import json
-from pathlib import Path
-from typing import Any
 
 
 # Configure logging
@@ -45,13 +46,6 @@ def get_database(client: MongoClient, db_name: str) -> Database:
     # Create the database for our example (we will use the same database throughout the tutorial)
     logger.info(f"Connecting to database: {db_name}")
     return client[db_name]
-
-
-# # This is added so that many files can reuse the function get_database()
-# if __name__ == "__main__":
-
-#    # Get the database
-#    dbname = get_database()
 
 
 def get_collection(db: Database, collection_name: str = "receipts") -> Collection:
@@ -128,7 +122,9 @@ def read_data(collection: Collection, n: int = 10):
         print(item)
 
 
-def update_data(collection, query, new_values):
+def update_data(
+    collection: Collection, query: Dict[str, Any], new_values: Dict[str, Any]
+):
     # Update data in the collection
     result = collection.update_one(query, new_values)
 
@@ -136,13 +132,14 @@ def update_data(collection, query, new_values):
     logger.info(f"Documents updated: {result.modified_count}")
 
 
-def delete_data(collection, query):
+def delete_data(collection: Collection, query: Dict[str, Any]):
 
     # Delete data from the collection
     result = collection.delete_one(query)
 
     # Log the number of documents deleted
     logger.info(f"Documents deleted: {result.deleted_count}")
+
 
 def main_store():
 
@@ -187,13 +184,14 @@ def main_drive():
             collection,
             directory="data",
             criterion1="carrefour_order_",
-            criterion2=datetime.now().strftime("%Y%m%d")
+            criterion2=datetime.now().strftime("%Y%m%d"),
         )
 
         # Read data
         # read_data(collection, n=10)
 
     logger.info("MongoDB connection closed automatically.")
+
 
 def main_loyalty():
     # mongoclient compatible with context manager
@@ -209,12 +207,8 @@ def main_loyalty():
             collection,
             directory="data",
             criterion1="carrefour_loyalty_transactions",
-            criterion2=datetime.now().strftime("%Y%m%d")
+            criterion2=datetime.now().strftime("%Y%m%d"),
         )
-
-        # Read data
-        # read_data(collection, n=10)
-
     logger.info("MongoDB connection closed automatically.")
 
 
@@ -232,7 +226,7 @@ def main_loyalty_operations():
             collection,
             directory="data",
             criterion1="carrefour_loyalty_operation",
-            criterion2=datetime.now().strftime("%Y%m%d")
+            criterion2=datetime.now().strftime("%Y%m%d"),
         )
 
         # Read data
@@ -241,9 +235,21 @@ def main_loyalty_operations():
     logger.info("MongoDB connection closed automatically.")
 
 
+def main(script_name: str = "store"):
+    match script_name:
+        case "store":
+            main_store()
+        case "drive":
+            main_drive()
+        case "loyalty":
+            main_loyalty()
+        case "loyaltyOperations":
+            main_loyalty_operations()
+        case _:
+            logger.warning(
+                "Please choose between script_name: 'store', 'drive', 'loyalty' or 'loyaltyOperations'."
+            )
+
 
 if __name__ == "__main__":
-    # main_store()
-    # main_drive()
-    # main_loyalty()
-    main_loyalty_operations()
+    main("loyaltyOperations")

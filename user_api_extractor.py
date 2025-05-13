@@ -494,7 +494,7 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
         except Exception as e:
             logger.error(f"Error during data fetching: {e}")
 
-    def _increment_month(self, current_date):
+    def _increment_month(self, current_date: datetime):
         """
         Increment the month, rolling over to the next year if necessary
         """
@@ -758,7 +758,9 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
             data,
             f"{date_time_str}-{CarrefourAccountAPIHandler.BRAND_NAME}_order_{refs[headers[0]]}_details.json",
         )
-    def fetch_loyalty_details(self, base_url: str, refs: Dict[str, Any], verbose: bool = False
+
+    def fetch_loyalty_details(
+        self, base_url: str, refs: Dict[str, Any], verbose: bool = False
     ) -> None:
         """
         Fetch detailed loyalty data from the API.
@@ -814,7 +816,7 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
         base_url: str,
         input_file: str,
         criterion: str = datetime.now().strftime("%Y%m%d"),
-        type: str = 'receipt',
+        type: str = "receipt",
         verbose: bool = False,
     ) -> None:
         """
@@ -827,14 +829,16 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
             verbose (bool): Whether to print detailed logs.
         """
         match type:
-            case 'receipt':
+            case "receipt":
                 headers = self.get_order_list_headers()
-            case 'order':
+            case "order":
                 headers = self.get_receipt_list_headers()
-            case 'loyalty':
+            case "loyalty":
                 headers = self.get_loyalty_list_headers()
             case _:
-                raise ValueError("The type should be either 'receipt', 'order' or 'loyalty'.")
+                raise ValueError(
+                    "The type should be either 'receipt', 'order' or 'loyalty'."
+                )
         with open(input_file, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
@@ -845,11 +849,11 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
                 if not row.get(headers[0]):
                     continue
                 match type:
-                    case 'receipt':
+                    case "receipt":
                         self.fetch_receipt_details(base_url, row, verbose=verbose)
-                    case 'order':
+                    case "order":
                         self.fetch_order_details(base_url, row, verbose=verbose)
-                    case 'loyalty':
+                    case "loyalty":
                         self.fetch_loyalty_details(base_url, row, verbose=verbose)
                     case _:
                         self.fetch_receipt_details(base_url, row, verbose=verbose)
@@ -955,6 +959,9 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
 
 
 def main_store():
+    """
+    Extract the details from store receipts according to some criterions (automated or not)
+    """
     api_url = "https://www.carrefour.fr/api/user/secured/loyalty/orders/receipts"
     api_details_url = "https://www.carrefour.fr/api/user/secured/loyalty/orders/receipt"
     cookies_file = "cookies.txt"
@@ -992,13 +999,14 @@ def main_store():
         base_url=api_details_url,
         input_file="data/receipts_ids.csv",
         criterion=datetime.now().strftime("%Y%m%d"),
-        type='receipt',
+        type="receipt",
         verbose=False,
     )
 
 
 def main_drive():
     """
+    Extract the details from Drive orders according to some criterions
     Note: It may also extract CLICK AND COLLECT items
     """
     api_url = "https://www.carrefour.fr/api/user/orders"
@@ -1019,29 +1027,32 @@ def main_drive():
     # # # Step 1: Perform login
     # # handler.perform_login("https://www.carrefour.fr/login")
 
-    # # Step 2: Fetch paginated data or whole data
-    # handler.fetch_all_orders(api_url, params_drive, verbose=False)
-    # # handler.fetch_all_receipts(api_url, params_pass, verbose=False)
+    # Step 2: Fetch paginated data or whole data
+    handler.fetch_all_orders(api_url, params_drive, verbose=False)
+    # handler.fetch_all_receipts(api_url, params_pass, verbose=False)
 
-    # # Step 3: Extract order IDs
-    # handler.extract_orders_ids(
-    #     criterion1=f"{CarrefourAccountAPIHandler.BRAND_NAME}_orders_",
-    #     criterion2=datetime.now().strftime("%Y%m%d"),
-    #     output_file="data/orders_ids.csv",
-    # )
-    # CarrefourAccountAPIHandler.remove_duplicates_from_list("data/orders_ids.csv")
+    # Step 3: Extract order IDs
+    handler.extract_orders_ids(
+        criterion1=f"{CarrefourAccountAPIHandler.BRAND_NAME}_orders_",
+        criterion2=datetime.now().strftime("%Y%m%d"),
+        output_file="data/orders_ids.csv",
+    )
+    CarrefourAccountAPIHandler.remove_duplicates_from_list("data/orders_ids.csv")
 
     # Step 4: Fetch receipt details
     handler.fetch_details_from_file(
         base_url=api_details_url,
         input_file="data/orders_ids.csv",
         criterion=datetime.now().strftime("%Y%m%d"),
-        type='order',
+        type="order",
         verbose=False,
     )
 
 
 def main_loyalty():
+    """
+    Extract loyalty history and loyalty operations in order to feed loyalty and loyaltyOperations collections in Carrefour database
+    """
     api_url = "https://www.carrefour.fr/api/user/secured/loyalty/transactions"
     api_details_url = "https://www.carrefour.fr/api/user/secured/loyalty/transactions"
     cookies_file = "cookies.txt"
@@ -1049,12 +1060,12 @@ def main_loyalty():
     params = {"date": "04/01/2022"}
     # Initialize the handler
     handler = CarrefourAccountAPIHandler(cookies_file=cookies_file)
-    # handler.fetch_all_loyalty(api_url, params)
-    # handler.extract_loyalty_details(
-    #     criterion1=f"{CarrefourAccountAPIHandler.BRAND_NAME}_loyalty_transactions",
-    #     criterion2="20250506",
-    #     output_file="data/loyalty_ids.csv",
-    # )
+    handler.fetch_all_loyalty(api_url, params)
+    handler.extract_loyalty_details(
+        criterion1=f"{CarrefourAccountAPIHandler.BRAND_NAME}_loyalty_transactions",
+        criterion2="20250506",
+        output_file="data/loyalty_ids.csv",
+    )
     # Step 4: Fetch receipt details
     handler.fetch_details_from_file(
         base_url=api_details_url,
@@ -1065,8 +1076,20 @@ def main_loyalty():
     )
 
 
+def main(script_name: str = "store"):
+    match script_name:
+        case "store":
+            main_store()
+        case "drive":
+            main_drive()
+        case "loyalty":
+            main_loyalty()
+        case _:
+            logger.warning(
+                "Please choose between script_name: 'store', 'drive', 'loyalty'."
+            )
+
+
 # Main execution
 if __name__ == "__main__":
-    # main_store()
-    # main_drive()
-    main_loyalty()
+    main("store")

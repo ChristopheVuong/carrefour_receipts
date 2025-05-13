@@ -191,49 +191,61 @@ pipeline_receipts = [
             "totalAmountDeferredDiscount": {"$first": "$totalAmountDeferredDiscount"},
             "totalPaidAmount": {"$first": "$totalPaidAmount"},
             "paymentInfo": {"$first": "$paymentInfo"},
-            "vatTotalProductsAt20" : {"$first": { "$cond": [ { "$eq" : ["$vats.vatPercentage", "20.0"]}, "$vats.vatTotalProducts", 0]}},
-            "vatTotalProductsAt5" : {"$first": { "$cond": [ { "$eq" : ["$vats.vatPercentage", "5.5"]}, "$vats.vatTotalProducts", 0]}},
+            "vatTotalProductsAt20": {
+                "$first": {
+                    "$cond": [
+                        {"$eq": ["$vats.vatPercentage", "20.0"]},
+                        "$vats.vatTotalProducts",
+                        0,
+                    ]
+                }
+            },
+            "vatTotalProductsAt5": {
+                "$first": {
+                    "$cond": [
+                        {"$eq": ["$vats.vatPercentage", "5.5"]},
+                        "$vats.vatTotalProducts",
+                        0,
+                    ]
+                }
+            },
             "vatAt20": {
                 "$sum": {
                     "$cond": {
-                        "if" : {"$eq": ["$vats.vatPercentage", "20.0"]},
-                        "then" : "$vats.vatAmount",
-                        "else" : 0,
+                        "if": {"$eq": ["$vats.vatPercentage", "20.0"]},
+                        "then": "$vats.vatAmount",
+                        "else": 0,
                     }
                 }
             },
             "vatAt5": {
                 "$sum": {
                     "$cond": {
-                        "if" : {"$eq": ["$vats.vatPercentage", "5.5"]},
-                        "then" : "$vats.vatAmount",
-                        "else" : 0,
+                        "if": {"$eq": ["$vats.vatPercentage", "5.5"]},
+                        "then": "$vats.vatAmount",
+                        "else": 0,
                     }
                 }
-            }
+            },
         }
     },
     {"$unwind": {"path": "$paymentInfo", "preserveNullAndEmptyArrays": True}},
     {
         "$group": {
-            "_id": {
-                "id": "$_id", 
-                "paymentChoice": "$paymentInfo.choice"
-            },
+            "_id": {"id": "$_id", "paymentChoice": "$paymentInfo.choice"},
             "dateKey": {"$first": "$dateKey"},
             "totalAmountBeforeDiscount": {"$first": "$totalAmountBeforeDiscount"},
             "couponDiscount": {"$first": "$couponDiscount"},
             "totalAmountImmediateDiscount": {"$first": "$totalAmountImmediateDiscount"},
             "totalAmountDeferredDiscount": {"$first": "$totalAmountDeferredDiscount"},
             "totalPaidAmount": {"$first": "$totalPaidAmount"},
-            "vatTotalProductsAt20" : {"$first": "$vatTotalProductsAt20"},
-            "vatTotalProductsAt5" : {"$first": "$vatTotalProductsAt5"},
+            "vatTotalProductsAt20": {"$first": "$vatTotalProductsAt20"},
+            "vatTotalProductsAt5": {"$first": "$vatTotalProductsAt5"},
             "vatAt5": {"$first": "$vatAt5"},
             "vatAt20": {"$first": "$vatAt20"},
             "paymentAmount": {"$sum": "$paymentInfo.amount"},
         }
     },
-    
     {"$addFields": {"recordType": "receipt", "totalEarnedAmount": 0}},
     {
         "$project": {
@@ -248,8 +260,8 @@ pipeline_receipts = [
             "totalAmountDeferredDiscount": "$totalAmountDeferredDiscount",
             "totalEarnedAmount": "$totalEarnedAmount",
             "totalPaidAmount": "$totalPaidAmount",
-            "vatTotalProductsAt20" : {"$ifNull": ["$vatTotalProductsAt20", 0]},
-            "vatTotalProductsAt5" : {"$ifNull": ["$vatTotalProductsAt5", 0]},
+            "vatTotalProductsAt20": {"$ifNull": ["$vatTotalProductsAt20", 0]},
+            "vatTotalProductsAt5": {"$ifNull": ["$vatTotalProductsAt5", 0]},
             "vatAt5": "$vatAt5",
             "vatAt20": "$vatAt20",
             "paymentAmount": "$paymentAmount",
@@ -301,61 +313,81 @@ pipeline_all = [
             "totalAmountDeferredDiscount": {"$first": "$totalAmountDeferredDiscount"},
             "totalPaidAmount": {"$first": "$totalPaidAmount"},
             "paymentInfo": {"$first": "$paymentInfo"},
-            "vatTotalProductsAt20" : {"$sum": { "$cond": [ { "$eq" : ["$vats.vatPercentage", "20.0"]}, "$vats.vatTotalProducts", 0]}},
-            "vatTotalProductsAt5" : {"$sum": { "$cond": [ { "$eq" : ["$vats.vatPercentage", "5.5"]}, "$vats.vatTotalProducts", 0]}},
-            "vatTotalProductsAt10" : {"$sum": { "$cond": [ { "$eq" : ["$vats.vatPercentage", "10.0"]}, "$vats.vatTotalProducts", 0]}},
+            "vatTotalProductsAt20": {
+                "$sum": {
+                    "$cond": [
+                        {"$eq": ["$vats.vatPercentage", "20.0"]},
+                        "$vats.vatTotalProducts",
+                        0,
+                    ]
+                }
+            },
+            "vatTotalProductsAt5": {
+                "$sum": {
+                    "$cond": [
+                        {"$eq": ["$vats.vatPercentage", "5.5"]},
+                        "$vats.vatTotalProducts",
+                        0,
+                    ]
+                }
+            },
+            "vatTotalProductsAt10": {
+                "$sum": {
+                    "$cond": [
+                        {"$eq": ["$vats.vatPercentage", "10.0"]},
+                        "$vats.vatTotalProducts",
+                        0,
+                    ]
+                }
+            },
             "vatAt10": {
                 "$sum": {
                     "$cond": {
-                        "if" : {"$eq": ["$vats.vatPercentage", "10.0"]},
-                        "then" : "$vats.vatAmount",
-                        "else" : 0,
+                        "if": {"$eq": ["$vats.vatPercentage", "10.0"]},
+                        "then": "$vats.vatAmount",
+                        "else": 0,
                     }
                 }
             },
             "vatAt20": {
                 "$sum": {
                     "$cond": {
-                        "if" : {"$eq": ["$vats.vatPercentage", "20.0"]},
-                        "then" : "$vats.vatAmount",
-                        "else" : 0,
+                        "if": {"$eq": ["$vats.vatPercentage", "20.0"]},
+                        "then": "$vats.vatAmount",
+                        "else": 0,
                     }
                 }
             },
             "vatAt5": {
                 "$sum": {
                     "$cond": {
-                        "if" : {"$eq": ["$vats.vatPercentage", "5.5"]},
-                        "then" : "$vats.vatAmount",
-                        "else" : 0,
+                        "if": {"$eq": ["$vats.vatPercentage", "5.5"]},
+                        "then": "$vats.vatAmount",
+                        "else": 0,
                     }
                 }
-            }
+            },
         }
     },
     {"$unwind": {"path": "$paymentInfo", "preserveNullAndEmptyArrays": True}},
     {
         "$group": {
-            "_id": {
-                "id": "$_id", 
-                "paymentChoice": "$paymentInfo.choice"
-            },
+            "_id": {"id": "$_id", "paymentChoice": "$paymentInfo.choice"},
             "dateKey": {"$first": "$dateKey"},
             "totalAmountBeforeDiscount": {"$first": "$totalAmountBeforeDiscount"},
             "couponDiscount": {"$first": "$couponDiscount"},
             "totalAmountImmediateDiscount": {"$first": "$totalAmountImmediateDiscount"},
             "totalAmountDeferredDiscount": {"$first": "$totalAmountDeferredDiscount"},
             "totalPaidAmount": {"$first": "$totalPaidAmount"},
-            "vatTotalProductsAt20" : {"$first": "$vatTotalProductsAt20"},
-            "vatTotalProductsAt5" : {"$first": "$vatTotalProductsAt5"},
-            "vatTotalProductsAt10" : {"$first": "$vatTotalProductsAt10"},
+            "vatTotalProductsAt20": {"$first": "$vatTotalProductsAt20"},
+            "vatTotalProductsAt5": {"$first": "$vatTotalProductsAt5"},
+            "vatTotalProductsAt10": {"$first": "$vatTotalProductsAt10"},
             "vatAt5": {"$first": "$vatAt5"},
             "vatAt20": {"$first": "$vatAt20"},
-            "vatAt10" : {"$first" : "$vatAt10"},
+            "vatAt10": {"$first": "$vatAt10"},
             "paymentAmount": {"$sum": "$paymentInfo.amount"},
         }
     },
-    
     {"$addFields": {"recordType": "receipt", "totalEarnedAmount": 0}},
     {
         "$project": {
@@ -370,12 +402,12 @@ pipeline_all = [
             "totalAmountDeferredDiscount": "$totalAmountDeferredDiscount",
             "totalEarnedAmount": "$totalEarnedAmount",
             "totalPaidAmount": "$totalPaidAmount",
-            "vatTotalProductsAt20" : "$vatTotalProductsAt20",
-            "vatTotalProductsAt5" : "$vatTotalProductsAt5",
-            "vatTotalProductsAt10" : "$vatTotalProductsAt10",
+            "vatTotalProductsAt20": "$vatTotalProductsAt20",
+            "vatTotalProductsAt5": "$vatTotalProductsAt5",
+            "vatTotalProductsAt10": "$vatTotalProductsAt10",
             "vatAt5": "$vatAt5",
             "vatAt20": "$vatAt20",
-            "vatAt10" : "$vatAt10",
+            "vatAt10": "$vatAt10",
             "paymentAmount": "$paymentAmount",
         }
     },
@@ -513,7 +545,14 @@ pipeline_all = [
                         "paymentAmount": {"$sum": "$paymentInfo.amount"},
                     }
                 },
-                {"$addFields": {"recordType": "order", "totalAmountDeferredDiscount": 0, "vatTotalProductsAt10" : 0, "vatAt10" : 0}},
+                {
+                    "$addFields": {
+                        "recordType": "order",
+                        "totalAmountDeferredDiscount": 0,
+                        "vatTotalProductsAt10": 0,
+                        "vatAt10": 0,
+                    }
+                },
                 {
                     "$project": {
                         "_id": 0,
@@ -529,9 +568,11 @@ pipeline_all = [
                         "totalAmountDeferredDiscount": "$totalAmountDeferredDiscount",
                         "totalEarnedAmount": "$totalEarnedAmount",
                         "totalPaidAmount": "$totalPaidAmount",
-                        "vatTotalProductsAt20" : { "$multiply": ["$vatAt20", 6]},
-                        "vatTotalProductsAt5" : { "$multiply": ["$vatAt5", 1+100 / 5.5]},
-                        "vatTotalProductsAt10" : "$vatTotalProductsAt10",
+                        "vatTotalProductsAt20": {"$multiply": ["$vatAt20", 6]},
+                        "vatTotalProductsAt5": {
+                            "$multiply": ["$vatAt5", 1 + 100 / 5.5]
+                        },
+                        "vatTotalProductsAt10": "$vatTotalProductsAt10",
                         "vatAt5": "$vatAt5",
                         "vatAt20": "$vatAt20",
                         "vatAt10": "$vatAt10",
@@ -553,7 +594,7 @@ pipeline_loyalty = [
             "operationId": {"$toString": "$history.operationId"},  # Convert to string
             "date": "$history.date",
             "earned": "$history.earned",
-            "burned": "$history.burned"
+            "burned": "$history.burned",
         }
     },
     {
@@ -561,7 +602,7 @@ pipeline_loyalty = [
             "from": "loyaltyOperations",
             "localField": "operationId",
             "foreignField": "operationId",
-            "as": "operation"
+            "as": "operation",
         }
     },
     {"$unwind": {"path": "$operation", "preserveNullAndEmptyArrays": True}},
@@ -581,9 +622,9 @@ pipeline_loyalty = [
             "itemLabel": "$operation.data.attributes.itemLabel",
             "promotionLabel": "$operation.data.attributes.promotionLabel",
             "itemRd": "$operation.data.attributes.itemRd",
-            "loyaltyOperation": "$operation.data.attributes.loyaltyOperation"
+            "loyaltyOperation": "$operation.data.attributes.loyaltyOperation",
         }
-    }
+    },
 ]
 # Define the aggregation pipeline
 pipeline_prod = [
@@ -642,7 +683,7 @@ pipeline_prod = [
             "slugProductLabel": "$_id.productLabel",
             "category": "$category",
             "subCategory": "",
-            "vatPercentage" : "$vatPercentage",
+            "vatPercentage": "$vatPercentage",
             "totalQuantity": "$totalQuantity",
             "totalWeight": "$totalWeight",
             "unitPrice": "$unitPrice",
@@ -829,7 +870,7 @@ pipeline_prod = [
                         },
                     }
                 },
-                {"$addFields": {"vatPercentage" : None}},
+                {"$addFields": {"vatPercentage": None}},
                 {
                     "$project": {
                         "_id": 0,
@@ -842,20 +883,20 @@ pipeline_prod = [
                         "slugProductLabel": "$slugProductLabel",
                         "category": "",
                         "subCategory": "$subCategory",
-                        "vatPercentage" : "$vatPercentage",
+                        "vatPercentage": "$vatPercentage",
                         "totalQuantity": "$totalQuantity",
                         "totalWeight": "$totalWeight",
                         "unitPrice": "$unitPrice",
                         "totalPrice": "$totalPrice",
                         "totalAmountImmediateDiscount": {
                             "$multiply": ["$totalAmountImmediateDiscount", -1]
-                        }
+                        },
                     }
                 },
             ],
         }
     },
-    {"$sort": {"dateKey": -1}}
+    {"$sort": {"dateKey": -1}},
 ]
 
 
@@ -931,8 +972,11 @@ def main_amounts():
     FILEPATH = "data/20250501-carrefour_amounts.csv"
     # dictionary matching payment choices and discount
     PAYMENT_CHOICES = {
-        "Cagnotte fidélité" : 1, "eLOYALTY" : 1, "Bons de réduction" : 1, 
-        "Bons d'achat" : DISCOUNT_PERCENT_GIFT_CARD, "CARREFOUR_EPAY" : DISCOUNT_PERCENT_GIFT_CARD
+        "Cagnotte fidélité": 1,
+        "eLOYALTY": 1,
+        "Bons de réduction": 1,
+        "Bons d'achat": DISCOUNT_PERCENT_GIFT_CARD,
+        "CARREFOUR_EPAY": DISCOUNT_PERCENT_GIFT_CARD,
     }
     df_amounts = query_collection(pipeline=pipeline_all)
     # pivot to get the amounts associated to each payment choice
@@ -950,17 +994,13 @@ def main_amounts():
     ).reset_index()
     table_amounts.columns.name = None
     table_amounts["dateKey"] = pd.to_datetime(table_amounts["dateKey"])
-    
+
     table_amounts["totalTrueAmount"] = table_amounts["totalPaidAmount"]
     for choice, discount in PAYMENT_CHOICES.items():
         table_amounts["totalTrueAmount"] -= table_amounts[choice] * discount
-        
+
     table_amounts.to_csv(path_or_buf=FILEPATH, index=False)
     logger.info(f"Saved table amounts to {FILEPATH}")
-    # table_monthly = (
-    #     table_amounts.groupby(pd.Grouper(key="dateKey", freq="ME")).sum().reset_index()
-    # )
-    # display_amounts(table_monthly, col_amount="totalTrueAmount", col_date="dateKey")
 
 
 def main_loyalty():
@@ -979,8 +1019,19 @@ def main_prods():
     logger.info(f"Saved table amounts to {FILEPATH}")
 
 
+def main(script_name: str = "store"):
+    match script_name:
+        case "amounts":
+            main_amounts()
+        case "prods":
+            main_prods()
+        case "loyalty":
+            main_loyalty()
+        case _:
+            logger.warning(
+                "Please choose between script_name: 'amounts', 'prods' or 'loyalty'."
+            )
+
+
 if __name__ == "__main__":
-    # main_store()
-    # main_amounts()
-    # main_prods()
-    main_loyalty()
+    main("loyalty")
