@@ -1,3 +1,8 @@
+"""
+A script to test boundaries Carrefour user API with various requests
+Handle the case when there is an internal error or empty document with some template html, etc.
+"""
+
 import pytest
 import os
 import json

@@ -11,7 +11,7 @@ from urllib.parse import urlencode, unquote
 
 import yaml
 
-# Configure logging
+# Configure logging (logging to console or in log file)
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
@@ -23,7 +23,7 @@ MAX_SCROLLS = 5  # Maximum number of scrolls to fetch data
 
 class AccountAPIHandler(ABC):
     """
-    Abstract base class for handling account API interactions (retail store online or physical).
+    Abstract wrapper base class for handling account API interactions (retail store online or physical).
     """
 
     def __init__(
@@ -164,7 +164,7 @@ class AccountAPIHandler(ABC):
 
 class CarrefourAccountAPIHandler(AccountAPIHandler):
     """
-    A class to handle login, fetching data from an API, and saving it locally.
+    A wrapper class to handle login, fetching data from an API, and saving it locally.
     """
 
     BRAND_NAME = "carrefour"
@@ -532,43 +532,44 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
         api_url = f"{url}?{urlencode(params)}" if params else url
 
         logger.info(f"Fetching data from: {api_url}")
+        curl_command = [
+            "curl",
+            "-X",
+            "GET",
+            api_url,
+            "-H",
+            "accept: application/json, text/plain, */*",
+            "-H",
+            "accept-language: fr,fr-FR;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
+            "-b",
+            self.cookies_file,
+            "-H",
+            "dnt: 1",
+            "-H",
+            "priority: u=1, i",
+            "-H",
+            f"referer: {referer}",
+            "-H",
+            'sec-ch-ua: "Microsoft Edge";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
+            "-H",
+            "sec-ch-ua-mobile: ?0",
+            "-H",
+            'sec-ch-ua-platform: "macOS"',
+            "-H",
+            "sec-fetch-dest: empty",
+            "-H",
+            "sec-fetch-mode: cors",
+            "-H",
+            "sec-fetch-site: same-origin",
+            "-H",
+            "user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0",
+            "-H",
+            "x-requested-with: XMLHttpRequest",
+        ]
         try:
             # realistic request headers
             result = subprocess.run(
-                [
-                    "curl",
-                    "-X",
-                    "GET",
-                    api_url,
-                    "-H",
-                    "accept: application/json, text/plain, */*",
-                    "-H",
-                    "accept-language: fr,fr-FR;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
-                    "-b",
-                    self.cookies_file,
-                    "-H",
-                    "dnt: 1",
-                    "-H",
-                    "priority: u=1, i",
-                    "-H",
-                    f"referer: {referer}",
-                    "-H",
-                    'sec-ch-ua: "Microsoft Edge";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
-                    "-H",
-                    "sec-ch-ua-mobile: ?0",
-                    "-H",
-                    'sec-ch-ua-platform: "macOS"',
-                    "-H",
-                    "sec-fetch-dest: empty",
-                    "-H",
-                    "sec-fetch-mode: cors",
-                    "-H",
-                    "sec-fetch-site: same-origin",
-                    "-H",
-                    "user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0",
-                    "-H",
-                    "x-requested-with: XMLHttpRequest",
-                ],
+                curl_command,
                 capture_output=True,
                 text=True,
                 check=True,
@@ -1086,7 +1087,7 @@ def main(script_name: str = "store"):
             main_loyalty()
         case _:
             logger.warning(
-                "Please choose between script_name: 'store', 'drive', 'loyalty'."
+                "Please choose between script_name: 'store', 'drive' or 'loyalty'."
             )
 
 

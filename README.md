@@ -39,7 +39,7 @@ KPIs:
 
 - **Tech Stack**:  
   - Python 3.10+ but Python 3.8+ should be enough.  
-  - JSON for storage by default (API endpoint), MongoDB for database and querying and Pandas  
+  - JSON for storage by default (API endpoint), MongoDB for database and querying and Pandas for analysis. 
   - Matplotlib and maybe PowerBI for visualization, Streamlit for interactive display.  
 - **Dependency management**
   The project does not need special packages for its main functionality that is based on curl commands, csv writing and formatting.
@@ -54,6 +54,13 @@ KPIs:
 
 
 ### **2. Authentication**
+
+Read https://medium.com/@rramgattie/samesite-and-subdomains-08870bbdd62c
+
+Credentials give cookies, and clicks trigger api return.
+
+The Carrefour website is protected by samesite parameters. Especially, when a cookie is set with `SameSite=LAX`, it means that the cookie will be sent with “safe” cross-origin requests initiated by third-party websites (such as when a user clicks on a link to your site from another site), but not with requests initiated by scripts on other sites. This is because requests originating from the same domain (or a subdomain) are generally considered same-site by browsers, even though they technically come from different subdomains.
+See also https://portswigger.net/web-security/csrf/bypassing-samesite-restrictions. That prevents from using the library `requests` in order to send http requests. Hence, one needs to use more cumbersome tools.
 
 #### Attempt 1: Bypass Cloudflare & Login
 - **Anti-bot measures**:  
