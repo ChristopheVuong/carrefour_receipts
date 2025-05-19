@@ -22,7 +22,7 @@ KPIs:
 - see the impact of Carrefour incentive to buy (using promotions discounts)
 - have a share of spending by categories.
 - monitor the frequencies of discounts.
-- monitor pipelines efficiency in terms of query execution, and resilience in terms of ease of adjustment in case of update of the API
+- monitor pipelines efficiency in terms of query execution, and resilience in terms of ease of adjustment in case of update of the API.
 
 
 ---
@@ -225,7 +225,7 @@ The next step is to perform fuzzy join using the libraries `rapidfuzz` and `pand
 - **Cost optimization**: Migrate to AWS Glue/S3 for scalable storage if handling several loyalty cards (user accounts). Think of paying for efficient scraping (automation of login without the resort to browsers).
 - **OOP or imperative coding**: Understand the true purpose of coding with OOP in several use cases surrounding this project.  
 - Find other API endpoints that can enrich the database, especially product-related information such as `ean` and their categories (food, hygiene, or others).
-- Talk with Carrefour shareholders about possibility to integrate this work as a microservice or a feature in the new iteration of the app (patch such as Revanced for YouTube).
+- Talk with Carrefour shareholders about possibility to integrate this work as a microservice or a feature in the new iteration of the app.
 
 ---
 
