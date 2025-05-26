@@ -39,14 +39,14 @@ KPIs:
 
 - **Tech Stack**:  
   - Python 3.10+ but Python 3.8+ should be enough.  
-  - JSON for storage by default (API endpoint), MongoDB for database and querying and Pandas for analysis. 
+  - JSON for storage by default (API endpoint), MongoDB for database and querying and Pandas for analysis (batch processing). 
   - Matplotlib and maybe PowerBI for visualization, Streamlit for interactive display.  
 - **Dependency management**
   The project does not need special packages for its main functionality that is based on curl commands, csv writing and formatting.
   - Create a new conda environment and install dependency (Selenium, playwright, requests, httpx, Pymongo) with Python 3.10 or Python 3.11.
   - Use Poetry otherwise for this pure Python project.
   - Use MongoDB Playground with Javascript to test queries on samples.
-  - Use Pymongo for interfacing MongoDB querying and Pandas extended querying and refinement of data.
+  - Use Pymongo for interfacing MongoDB querying and Pandas extended querying and refinement of data (batch processing).
   - Use Docker for continuous integration.
 
 
@@ -143,15 +143,18 @@ The more complex operations such as joining and pivoting table should be deferre
 The next step is to perform fuzzy join using the libraries `rapidfuzz` and `pandas` on the product labels in order to merge receipt, order and loyalty data.
 
 
-#### **Automation & CI/CD**  
-- **Pipeline orchestration**:  
+### **Automation & CI/CD**  
+
+#### Pipeline orchestration 
   - Script extraction → transformation → storage as a Python module.  
   - Use GitHub Actions to schedule monthly runs (Cron jobs).
   - The cron job may need to force the opening of a new tab for login in Carrefour account which is a bit harsh for a consumer.
 
-- **Testing**:  
+#### Testing
+
+- **Recommendations**
   - Write unit tests for critical functions (e.g., Cloudflare bypass, link validity, HTTPS response, JSON parsing).
-  - Use the Playwright Pytest plugin called pytest-playwright to write end-to-end tests.
+  - Use the Playwright Pytest plugin called pytest-playwright to write end-to-end tests for authentication.
   - Consider rate limit, log successes / failures.   
   - Validate data integrity with Great Expectations (GX):  
   ```python
@@ -160,6 +163,10 @@ The next step is to perform fuzzy join using the libraries `rapidfuzz` and `pand
   validator.expect_column_values_to_be_between(column="age", min_value=0, max_value=120)
   validator.expect_column_values_to_be_in_set(column="status", value_set=["active", "inactive"])
   ```
+
+Below is a breakdown of the key test types:
+- functional tests: test fetching initial page, then test subsequent pages with `scrollPage` and `scrollHash`parameters given a valid cookie text (just some api calls).
+- edge case test: 
 
 ---
 
@@ -217,11 +224,12 @@ The next step is to perform fuzzy join using the libraries `rapidfuzz` and `pand
 ### **6. Future Enhancements**  
 - **Advanced NLP**: Use spaCy to categorize unstructured product names based on a sample of already categorized items from the Drive orders.
 - **Modification of schema**: Find a better representation of the documents so that querying does not rely on dynamic fields.  
-- **Real-time dashboards**: Integrate Kafka for live data streaming.  
+<!-- - **Real-time dashboards**: Integrate Kafka for live data streaming.   -->
 - **Optimization of database accesses**: Find a better calendar for database access and work on how many updates one want to accurately monitor the KPIs.
 - **Creation of a complete MongoDB pipeline** that is actionable right off the shelf. Use the full power of MongoDB.
 - Use of command-line for quick command without switching to separate application. Use of Git, etc.
 - Continuous deployment of database (Streamlit access to database).
+- Use out-of-core computation libraries such as Polars (single machine) or Dask (multiple chunks across multiple cores or machines) instead of Pandas in case of several million of rows that do not fit into RAM.
 - **Cost optimization**: Migrate to AWS Glue/S3 for scalable storage if handling several loyalty cards (user accounts). Think of paying for efficient scraping (automation of login without the resort to browsers).
 - **OOP or imperative coding**: Understand the true purpose of coding with OOP in several use cases surrounding this project.  
 - Find other API endpoints that can enrich the database, especially product-related information such as `ean` and their categories (food, hygiene, or others).
@@ -265,3 +273,80 @@ The next step is to perform fuzzy join using the libraries `rapidfuzz` and `pand
 
 - https://hub.docker.com/r/aminehy/docker-streamlit-app
 - https://www.liquibase.com/resources/guides/database-continuous-integration
+
+```yml
+name: Python CI with pytest
+
+on:
+  push:
+    branches:
+      - main  # Trigger on pushes to the main branch
+  pull_request:
+    branches:
+      - main  # Trigger on pull requests targeting the main branch
+
+jobs:
+  test:
+    runs-on: ubuntu-latest  # Use the latest Ubuntu runner
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3  # Check out the repository code
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'  # Specify the Python version
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run pytest
+      run: |
+        pytest --verbose --color=yes  # Run pytest with verbose output
+```
+
+```yml
+name: Python CI with pytest (Poetry)
+
+on:
+  push:
+    branches:
+      - main  # Trigger on pushes to the main branch
+  pull_request:
+    branches:
+      - main  # Trigger on pull requests targeting the main branch
+
+jobs:
+  test:
+    runs-on: ubuntu-latest  # Use the latest Ubuntu runner
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3  # Check out the repository code
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'  # Specify the Python version
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1  # Install Poetry using a community action [[1]]
+      with:
+        version: '1.8.0'  # Specify the Poetry version
+
+    - name: Configure Poetry
+      run: |
+        poetry config virtualenvs.create true  # Ensure Poetry creates a virtual environment
+        poetry config virtualenvs.in-project true  # Optional: Place virtualenv in project directory
+
+    - name: Install dependencies
+      run: |
+        poetry install --no-root --sync  # Install dependencies from poetry.lock file [[2]]
+
+    - name: Run pytest
+      run: |
+        poetry run pytest --verbose --color=yes  # Run pytest with verbose output [[3]]
+```

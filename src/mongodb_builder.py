@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 # Provide the mongodb atlas url to connect python to mongodb using pymongo
 # CONNECTION_STRING = "mongodb+srv://user:pass@cluster.mongodb.net/myFirstDatabase"
 CONNECTION_STRING = "mongodb://localhost:27017/"
+DATA_DIRECTORY = "../data"
 
 
 def get_client(uri: str) -> MongoClient:
@@ -154,7 +155,7 @@ def main_store():
         # Insert JSON data
         insert_json_files(
             collection,
-            directory="data",
+            directory=DATA_DIRECTORY,
             criterion1="carrefour_receipt_",
             criterion2=datetime.now().strftime("%Y%m%d"),
             ids_col="id",
@@ -182,7 +183,7 @@ def main_drive():
         # Insert JSON data
         insert_json_files(
             collection,
-            directory="data",
+            directory=DATA_DIRECTORY,
             criterion1="carrefour_order_",
             criterion2=datetime.now().strftime("%Y%m%d"),
         )
@@ -205,7 +206,7 @@ def main_loyalty():
         # Insert JSON data
         insert_json_files(
             collection,
-            directory="data",
+            directory=DATA_DIRECTORY,
             criterion1="carrefour_loyalty_transactions",
             criterion2=datetime.now().strftime("%Y%m%d"),
         )
@@ -224,7 +225,7 @@ def main_loyalty_operations():
         # Insert JSON data
         insert_json_files(
             collection,
-            directory="data",
+            directory=DATA_DIRECTORY,
             criterion1="carrefour_loyalty_operation",
             criterion2=datetime.now().strftime("%Y%m%d"),
         )

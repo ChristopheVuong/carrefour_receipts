@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 
 # Define constants
 MAX_SCROLLS = 5  # Maximum number of scrolls to fetch data
+COOKIES_FILE = "../cookies.txt"  # Path to the cookies file
+DATA_DIRECTORY = "../data"  # Directory to save fetched data
 
 
 class AccountAPIHandler(ABC):
@@ -27,7 +29,7 @@ class AccountAPIHandler(ABC):
     """
 
     def __init__(
-        self, cookies_file: str = "cookies.txt", dst_folder: str = "data/"
+        self, cookies_file: str = COOKIES_FILE, dst_folder: str = DATA_DIRECTORY
     ) -> None:
         """
         Initialize the handler with default configurations.
@@ -175,7 +177,7 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
     }
 
     def __init__(
-        self, cookies_file: str = "cookies.txt", dst_folder: str = "data/"
+        self, cookies_file: str = COOKIES_FILE, dst_folder: str = DATA_DIRECTORY
     ) -> None:
         """
         Initialize the handler with default configurations.
@@ -1056,7 +1058,7 @@ def main_loyalty():
     """
     api_url = "https://www.carrefour.fr/api/user/secured/loyalty/transactions"
     api_details_url = "https://www.carrefour.fr/api/user/secured/loyalty/transactions"
-    cookies_file = "cookies.txt"
+    cookies_file = "../cookies.txt"
 
     params = {"date": "04/01/2022"}
     # Initialize the handler

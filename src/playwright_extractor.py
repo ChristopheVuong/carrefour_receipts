@@ -1,3 +1,7 @@
+"""
+DEPRECATED: Use user_api_extractor instead.
+"""
+
 import asyncio
 from http.cookiejar import CookieJar, Cookie
 import logging
@@ -815,6 +819,7 @@ if __name__ == "__main__":
     PASSWORD = "your_password"
 
     # arguments for requests
+    # TODO: put in SECRETS
     url = "https://www.carrefour.fr/api/user/secured/loyalty/orders/receipts"
     params = {"loyaltyCardNumber": "9135720000005422294", "loyaltyCardType": "LOYALTY"}
     # headers = {

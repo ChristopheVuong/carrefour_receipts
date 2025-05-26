@@ -2,7 +2,7 @@ import logging
 from pymongo import MongoClient
 from typing import List, Dict, Any
 
-from mongodb_builder import get_collection, get_database
+from src.mongodb_builder import get_collection, get_database
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 # Provide the mongodb atlas url to connect python to mongodb using pymongo
 # CONNECTION_STRING = "mongodb+srv://user:pass@cluster.mongodb.net/myFirstDatabase"
 CONNECTION_STRING = "mongodb://localhost:27017/"
+DATA_DIRECTORY = "../data"
 
 
 # Carrefour Constants
@@ -966,10 +967,14 @@ def display_amounts(
     plt.tight_layout()
     plt.show()
 
+DEFAULT_DATE_UPDATE = "20250501"
 
-def main_amounts():
+def main_amounts(date_update: str = DEFAULT_DATE_UPDATE):
+    """
+    Main function to query the MongoDB collection for purchase amounts and save the results to a CSV file.
+    """
     DISCOUNT_PERCENT_GIFT_CARD = 0.045  # around 5% since using MACIF avantages
-    FILEPATH = "data/20250501-carrefour_amounts.csv"
+    FILEPATH = f"{DATA_DIRECTORY}/{date_update}-carrefour_amounts.csv"
     # dictionary matching payment choices and discount
     PAYMENT_CHOICES = {
         "Cagnotte fidélité": 1,
@@ -1003,16 +1008,16 @@ def main_amounts():
     logger.info(f"Saved table amounts to {FILEPATH}")
 
 
-def main_loyalty():
-    FILEPATH = "data/20250501-carrefour_loyalty.csv"
+def main_loyalty(date_update: str = DEFAULT_DATE_UPDATE):
+    FILEPATH = f"{DATA_DIRECTORY}/{date_update}-carrefour_loyalty.csv"
     df_loyalty = query_collection(pipeline=pipeline_loyalty, collection_name="loyalty")
     df_loyalty["date"] = pd.to_datetime(df_loyalty["date"].apply(lambda x: x[:10]))
     df_loyalty.to_csv(path_or_buf=FILEPATH, index=False)
     logger.info(f"Saved table amounts to {FILEPATH}")
 
 
-def main_prods():
-    FILEPATH = "data/20250501-carrefour_prods.csv"
+def main_prods(date_update: str = DEFAULT_DATE_UPDATE):
+    FILEPATH = f"{DATA_DIRECTORY}/{date_update}-carrefour_prods.csv"
     df_receipts_prod = query_collection(pipeline_prod, collection_name="receipts")
     df_receipts_prod["dateKey"] = pd.to_datetime(df_receipts_prod["dateKey"])
     df_receipts_prod.to_csv(path_or_buf=FILEPATH, index=False)

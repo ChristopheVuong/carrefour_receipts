@@ -13,6 +13,9 @@ from sentence_transformers import SentenceTransformer
 
 
 def preprocess(text: str):
+    """
+    Preprocess the text by removing diacritics and converting to lowercase.
+    """
     text = text.lower()
     # Normalize to decomposed form (split base characters and diacritics)
     nfkd_form = unicodedata.normalize("NFKD", text)
@@ -43,7 +46,16 @@ def embedding_to_df(
     filter_out: str | None = None,
     filter_in: str | None = None,
 ):
-    """In-place computation of embedding"""
+    """
+    In-place computation of embedding for labels in a DataFrame.
+    Args:
+        model : SentenceTransformer model
+        df : DataFrame with labels
+        column_name : column with labels
+        new_column_name : column to store embeddings
+        filter_out : filter out rows containing this string
+        filter_in : filter in rows containing this string
+    """
     if filter_in:
         mask = (df[column_name].notna()) & (df[column_name].str.contains(filter_in))
         df.loc[mask, new_column_name] = df.loc[mask, column_name].apply(
@@ -61,6 +73,14 @@ def embedding_to_df(
 
 # Define a cached version of the embedding function
 def get_cached_encode(model, text):
+    """
+    Get the embedding for a given text using the specified model.
+    Args:
+        model : SentenceTransformer model
+        text : input text
+        Returns: embedding vector for the input text
+    """
+
     @lru_cache(maxsize=None)  # Cache all results
     def cached_encode(text):
         return model.encode(preprocess(text))
@@ -74,9 +94,18 @@ def match_labels_df(
     params: Dict[str, Any],
     criterion: str | None = None,
 ) -> None:
-    """Matching names in columns of DataFrames
+    """Matching names in columns of DataFrames (by default the result is stored in the column matchedLabel)
     Args:
-        df1 : with new col
+        df1 : DataFrame with labels to match
+        df2 : DataFrame with labels to match against
+        params : dictionary with keys being the column names and columns to group by
+            - col1: column in df1 to match
+            - col2: column in df2 to match against
+            - newCol: column with embeddings
+            - groupby1: column to group by in df1
+            - groupby2: column to group by in df2
+        params: dictionary with keys being the column names and columns to group by
+        criterion: optional string to filter df2
     """
     required_params = ["col1", "col2", "newCol", "groupby1", "groupby2"]
     for param in params.keys():
@@ -133,22 +162,57 @@ def match_labels_df(
 
 
 def last_mode(row):
+    """
+    Compute the last mode, it is to say the most frequent element in the row if there is no tie, otherwise the last element.
+    Args:
+        row: row dataframe
+    """
     modes = row.mode()
     if len(modes) > 1:
         return row.iloc[-1] if row.iloc[-1] else row.iloc[0]
     else:
         return modes.iloc[0]
-    
+
+
 def input_from_csv(
     df: pd.DataFrame,
     filepath: str,
     column_name: str,
 ):
-    """In-place computation of embedding"""
+    """
+    Input categories from external csv
+    """
     input_df = pd.read_csv(filepath)
     if isinstance(column_name, str):
         df[column_name] = input_df[column_name]
-        merged_df = pd.merge(df, input_df, on=column_name, how="left", suffixes=("_original", "_imputed"))
+        merged_df = pd.merge(
+            df, input_df, on=column_name, how="left", suffixes=("_original", "_imputed")
+        )
     else:
         raise ValueError("column_name should be a string")
     return merged_df
+
+def join_on_dates_and_match(df1: pd.DataFrame, df2: pd.DataFrame, keys: Dict[str, Any]) -> pd.DataFrame:
+    """
+    Join two DataFrames on their index (date) and match labels.
+    """
+    required_params = ["col1", "col2", "date1", "date2"]
+    for param in keys.keys():
+        if param not in required_params:
+            raise KeyError(f"Missing required parameter: {param}")
+    merged = pd.merge(
+        df1,
+        df2,
+        how="left",
+        left_on=[keys["date1"], keys["col1"]],
+        right_on=[keys["date2"], keys["col2"]],
+        suffixes=("", "_loyalty"),
+    )
+
+    return merged
+
+def main_matching():
+    pass
+
+if __name__ == "__main__":
+    main_matching()
