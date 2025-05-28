@@ -1,0 +1,45 @@
+[tool.poetry]
+name = "carrefour_receipts"  # Name of your package
+version = "0.1.0"          # Version number (follow semantic versioning)
+description = "A Python package for extracting Carrefour receipts."
+authors = ["Christophe Vuong <christophe.vuong108@gmail.com>"]  # Your name and email
+license = "MIT"  # License type
+readme = "README.md"  # Path to your README file
+repository = "https://github.com/ChristopheVuong/carrefour_receipts"  # Updated link to your repository
+keywords = ["retail", "shopping", "e-commerce", "analytics", "finance"]  # Keywords for discoverability
+
+[tool.poetry.dependencies]
+python = "^3.10"  # Minimum Python version required > 3.8 (stability and compatibility compared to 3.11)
+# beautifulsoup4 = "*" # for scraping here and there (no need for now)
+httpx = "^0.24.0"  # HTTP client for making requests
+logging = "*"
+requests = "*"  # Added dependency for handling HTTP requests
+pandas = "^1.5.0"  # Pandas dependency (any version compatible with 1.5.0)
+selenium = "."
+playwright = "."
+pyyaml = "^6.0.0"  # YAML parsing library
+# python-slugify = "." # to include automatically in Poetry lock
+# greenlet = "." 
+# Beware it might be difficult to handle dependencies with playwright
+
+
+[tool.poetry.dev-dependencies]
+pytest = "^7.0.0"  # Development dependency for testing
+black = "^23.0.0"  # Code formatting tool
+flake8 = "^6.0.0"  # Linting tool
+
+# TODO: TO COMPLETE (additional development dependencies and scripts here)
+[tool.poetry.scripts]
+download-data = "src.download_data:main"  # a script to automate scraping
+
+[tool.poetry.urls]
+"Repository" = "https://github.com/ChristopheVuong/carrefour_receipts"
+"Documentation" = "https://github.com/ChristopheVuong/carrefour_receipts/blob/main/README.md"
+"Bug Tracker" = "https://github.com/ChristopheVuong/carrefour_receipts/issues"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]  # Required for building the package
+build-backend = "poetry.core.masonry.api"  # Build backend for Poetry
+
+[tool.pytest.ini_options]
+testpaths = "./tests/unit/"

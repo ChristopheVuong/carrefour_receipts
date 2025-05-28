@@ -39,7 +39,9 @@ KPIs:
 
 - **Tech Stack**:  
   - Python 3.10+ but Python 3.8+ should be enough.  
-  - JSON for storage by default (API endpoint), MongoDB for database and querying and Pandas for analysis (batch processing). 
+  - JSON for storage by default (API endpoint), 
+  - MongoDB for database and querying (for scalability sake as an existing MongoDB instance can be migrated to GCP and AWS -> use of MongoDB Atlas on GCP for high availability or self-managed MongoDB on Compute Engine or EC2)
+  - Pandas for analysis (batch processing). 
   - Matplotlib and maybe PowerBI for visualization, Streamlit for interactive display.  
 - **Dependency management**
   The project does not need special packages for its main functionality that is based on curl commands, csv writing and formatting.
@@ -109,7 +111,7 @@ The curl must be run on the same IP as you were loading the site with.
 - **Storage strategy**:
   - Build a MongoDB database since the API response is in JSON format and can constitute a document database easy to query from with MongoDB. Use of NoSQL in the context of local data (collected from a mobile app or a laptop on a daily or weekly basis).
   - Keep the stdout as it is (JSON file containing the receipt or order details) so that analysis by NoSQL querying is not constrained. 
-  - Given a sample of 3 years, we have around 300 receipts / orders equivalent to $\approx 300 \times 30 = 9000$ rows (with overhead 10K rows max) and few columns (count on single hand). This can be handled with Pandas. The data scaling may become an issue if one consider receipts / orders from various sources. Still when restraining to an individual, it is likely not an issue if the consumption is "normal".
+  - Given a sample of 3 years, we have around 300 receipts / orders equivalent to $\approx 300 \times 20 = 6000$ rows (with overhead 10K rows max) and few columns (count on single hand). That volumetry can be handled with Pandas. The data scaling may become an issue if one consider receipts / orders from various sources or several users. Still when restraining to an individual, it is likely not an issue if the consumption is regular.
   - Use PySpark for distributed processing if data scales beyond 1M+ rows (only plausible for purchased items). Only about a thousand rows or less for order receipts (use Pandas). 
 - **Schema enforcement**:  
   - Validate data types (e.g., `decimal` for amounts, `datetime` for timestamps in Pandas).  
@@ -117,7 +119,20 @@ The curl must be run on the same IP as you were loading the site with.
 
 #### Database connection
 
-On macOS, for the first time, use Homebrew to install `mongodb-community`.
+On macOS, for the first time, use Homebrew to install `mongodb-community`. You’ll use the MongoDB Homebrew tap to install and start MongoDB.
+Add the MongoDB Homebrew tap. In the Terminal app, run the following command:
+```bash
+brew tap mongodb/brew
+```
+Install the MongoDB Community Edition:
+```bash
+brew install mongodb-community
+```
+This installs the latest version of MongoDB. To install an older version, specify the version number, for example:
+```
+brew install mongodb-community@6.0
+````
+You have installed MongoDB.
 Then, run:
 
 ```bash
@@ -146,11 +161,16 @@ The next step is to perform fuzzy join using the libraries `rapidfuzz` and `pand
 ### **Automation & CI/CD**  
 
 #### Pipeline orchestration 
-  - Script extraction → transformation → storage as a Python module.  
+  - Script extraction → transformation → storage as a Python module using Pymongo then Pandas for processing data (transformation).
+  - **The loading (storage) part is not well-defined as the transform jobs also reduce the size of extracts (CSV). MongoDB can be seen as the loading tool for simple queries.**
   - Use GitHub Actions to schedule monthly runs (Cron jobs).
   - The cron job may need to force the opening of a new tab for login in Carrefour account which is a bit harsh for a consumer.
 
 #### Testing
+
+One can inspire from nba_api simple unit tests.
+
+Most useful tests are actually integration tests.
 
 - **Recommendations**
   - Write unit tests for critical functions (e.g., Cloudflare bypass, link validity, HTTPS response, JSON parsing).
@@ -195,15 +215,21 @@ Below is a breakdown of the key test types:
    - Inventory for hygiene and beauty (total quantity based on number of purchases of a selection of products by month or year): use rolling aggregation to get a better grasp of the evolution of number of items and then the actual consumption patterns.
    - How many liquid detergent containers per year? How many liters?
 
-#### **Streamlit App**  
+#### **Streamlit App (or Dash app)**  
 - **Features**:  
-  - Interactive filters (year/month/category).  
+  - Interactive filters (year/month/category) and drag-and-drop.  
   - Drill-down charts (Altair/Vega-Lite for time series and bar charts).  
-  - Caching (`@st.cache_data`) for large datasets.  
+  - Caching (`@st.cache_data`) for large datasets.
+
+*Dash uses Flask under the hood. It can be deployed using Gunicorn.*
+
+Use Streamlit for simplicity and rapid prototyping, and Dash for advanced interactivity, customization, and scalability. The choice depends on your project's complexity and requirements.
+
+Use Streamlit for prototyping machine learning models or analytics pipelines.
 
 - **Deployment**:  
   - Dockerize the app for portability.  
-  - Host on AWS EC2 or Streamlit Cloud.  
+  - Host on AWS EC2 or Streamlit Cloud or Heroku, AWS, Azure and Docker for Dash.  
 
 ---
 
@@ -211,7 +237,7 @@ Below is a breakdown of the key test types:
 - **Compliance**:  
   - Adhere to Carrefour’s `robots.txt` and terms of service.
   - Do not version-control `secrets.yml` that contain some critical piece of information relative to user.
-  - WISH: Anonymize personal data (e.g. hash some critical id number if necessary).  
+  - **WISH: Anonymize personal data (e.g. hash some critical id number if necessary).** 
    
 
 - **Monitoring**:  

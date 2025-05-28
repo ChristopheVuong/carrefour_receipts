@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from src.user_api_extractor import CarrefourAccountAPIHandler  # Replace with the actual module name
+from src.carrefour_receipts_api.user_api_extractor import CarrefourAccountAPIHandler  # Replace with the actual module name
 
 @pytest.fixture
 def handler():
@@ -77,3 +77,16 @@ def test_fetch_data_invalid_json(handler):
         # Assertions
         mock_run.assert_called_once()  # Ensure subprocess.run was called
         assert "JSONDecodeError" in str(exc_info.value)  # Check the error message
+
+
+def test_all_endpoints(handler):
+    """
+    TODO: Test the all_endpoints method to ensure it returns a list of endpoints.
+    """
+    # Call the all_endpoints method
+    endpoints = handler.all_endpoints()
+
+    # Assertions
+    assert isinstance(endpoints, list)  # Ensure it returns a list
+    assert len(endpoints) > 0  # Ensure the list is not empty
+    assert all(isinstance(endpoint, str) for endpoint in endpoints)  # Ensure all endpoints are strings

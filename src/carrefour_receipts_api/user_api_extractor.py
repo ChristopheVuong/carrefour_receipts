@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 
 # Define constants
 MAX_SCROLLS = 5  # Maximum number of scrolls to fetch data
-COOKIES_FILE = "../cookies.txt"  # Path to the cookies file
-DATA_DIRECTORY = "../data"  # Directory to save fetched data
+COOKIES_FILE = "../../cookies.txt"  # Path to the cookies file
+DATA_DIRECTORY = "../../data"  # Directory to save fetched data
 
 
 class AccountAPIHandler(ABC):

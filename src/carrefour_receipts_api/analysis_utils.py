@@ -11,6 +11,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from rapidfuzz import process, fuzz
 from sentence_transformers import SentenceTransformer
 
+DATA_DIRECTORY = "../../data"
 
 def preprocess(text: str):
     """
@@ -192,7 +193,10 @@ def input_from_csv(
         raise ValueError("column_name should be a string")
     return merged_df
 
-def join_on_dates_and_match(df1: pd.DataFrame, df2: pd.DataFrame, keys: Dict[str, Any]) -> pd.DataFrame:
+
+def join_on_dates_and_match(
+    df1: pd.DataFrame, df2: pd.DataFrame, keys: Dict[str, Any]
+) -> pd.DataFrame:
     """
     Join two DataFrames on their index (date) and match labels.
     """
@@ -211,8 +215,113 @@ def join_on_dates_and_match(df1: pd.DataFrame, df2: pd.DataFrame, keys: Dict[str
 
     return merged
 
-def main_matching():
-    pass
 
+def main_matching():
+    # Load a pre-trained Sentence Transformer model
+    # model = SentenceTransformer("all-MiniLM-L6-v2")
+    df_prod = pd.read_csv(f"{DATA_DIRECTORY}/20250501-carrefour_prods.csv", parse_dates=["dateKey"])
+    df_loyalty = pd.read_csv(
+        f"{DATA_DIRECTORY}/20250501-carrefour_loyalty.csv", parse_dates=["date"]
+    )
+    df_prod["totalPriceAfterDiscount"] = (
+        df_prod["totalPrice"] + df_prod["totalImmediateDiscount"]
+    )
+    mapped_categories = {
+        "Charcuterie": "food",
+        "Laits et Boissons végétales": "food",
+        "Jus de fruits et légumes": "food",
+        "Toasts et Pains de mie": "food",
+        "Yaourts et Fromages blancs": "food",
+        "Conserves et Bocaux": "food",
+        "Colas, Thés glacés, Sirops et Sodas": "food",
+        "Légumes": "food",
+        "Huiles, Vinaigres et Vinaigrettes": "food",
+        "Nettoyants vaisselle": "other",
+        "Accessoires de ménage": "other",
+        "Matériel de bureau": "other",
+        "Fromages": "food",
+        "Epicerie salée": "food",
+        "Cheveux": "other",
+        "Pains Burger, Sandwich et Wraps": "food",
+        "Eaux": "food",
+        "Viandes": "food",
+        "Lessives": "other",
+        "Pizzas, Quiches et Tartes": "food",
+        "Apéritifs et Chips": "food",
+        "Fruits": "food",
+        "Volaille et Rôtisserie": "food",
+        "Glaces et Sorbets": "food",
+        "Bio à Petit prix": "food",
+        "Gâteaux moelleux": "food",
+        "Apéritifs, Entrées et Snacking": "food",
+        "Petit déjeuner": "food",
+        "Hygiène dentaire": "other",
+        "Cave à Vins": "food",
+        "Boucherie": "food",
+        "Poissons et Fruits de mer": "food",
+        "Œufs": "food",
+        "Poissonnerie": "food",
+        "Essuie-tout, Papier toilette et Mouchoirs": "other",
+        "Confiseries et Chocolats": "food",
+        "RETURNABLE_BAG": "other",
+        "Hygiène intime ": "other",
+        "Désodorisants et Bougies": "other",
+        "Toutes nos régions": "food",
+        "Produits nettoyants": "other",
+        "Riz, Purées et Féculents": "food",
+        "Ingrédients pour cuisiner": "food",
+        "Sauces froides": "food",
+        "Pains frais": "food",
+        "Bières et Cidres": "food",
+        "Repas de Pâques": "food",
+        "Le Marché": "food",
+        "Beurres et Crèmes": "food",
+        "Premiers soins et Préservatifs": "other",
+        "Nintendo Switch": "other",
+        "Sucres, Farines et Aide à la pâtisserie": "food",
+        "Viennoiseries et Brioches fraîches": "food",
+        "Corps": "other",
+    }
+    # Fill NaN categories with subCategory mapped to main category
+    df_prod.loc[df_prod.category.isna(), "category"] = df_prod.loc[
+        df_prod.category.isna(), "subCategory"
+    ].map(mapped_categories)
+
+    df_prod = input_from_csv(
+        df_prod,
+        filepath=f"{DATA_DIRECTORY}/20250502-carrefour_food_products_labels_most_2.csv",
+        column_name='productLabel'
+    )
+    df_prod.to_csv(f"{DATA_DIRECTORY}/20250501-carrefour_products.csv", index=False)
+    params = {
+        "col1" : "itemLabel", 
+        "col2" : "productLabel", 
+        "newCol" : "embeddingLabel", 
+        "groupby1" : "date", 
+        "groupby2" : "dateKey"
+    }
+    embedding_to_df(
+        model,
+        df_loyalty,
+        params["col1"],
+        new_column_name="embeddingLabel",
+        filter_out="ART RAYON",
+    )
+    model = SentenceTransformer(
+        "all-distilroberta-v1"
+    )  
+    embedding_to_df(model, df_prod, params["col2"])
+
+    match_labels_df(df_loyalty, df_prod, params)
+
+    # better model slightly but longer to process
+
+    df_loyalty.loc[df_loyalty.similarity_score1 > 0.5, "matchedLabel"] = df_loyalty.loc[
+        df_loyalty.similarity_score1 > 0.5, "matchedLabel1"
+    ]
+    df_loyalty.loc[df_loyalty.similarity_score1 <= 0.5, "matchedLabel"] = df_loyalty.loc[
+        df_loyalty.similarity_score1 <= 0.5,
+        ["matchedLabel1", "matchedLabel2", "matchedLabelFuzzy"],
+    ].apply(last_mode, axis=1)
 if __name__ == "__main__":
     main_matching()
