@@ -2,7 +2,7 @@ import logging
 from pymongo import MongoClient
 from typing import List, Dict, Any
 
-from src.mongodb_builder import get_collection, get_database
+from mongodb_builder import get_collection, get_database
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 # Provide the mongodb atlas url to connect python to mongodb using pymongo
 # CONNECTION_STRING = "mongodb+srv://user:pass@cluster.mongodb.net/myFirstDatabase"
 CONNECTION_STRING = "mongodb://localhost:27017/"
-DATA_DIRECTORY = "../../data"
+DATA_DIRECTORY = "data" # Directory relative to the current directory by default the root of the project
 
 
 # Carrefour Constants

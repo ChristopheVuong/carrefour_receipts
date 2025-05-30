@@ -19,13 +19,111 @@ logger = logging.getLogger(__name__)
 
 # Define constants
 MAX_SCROLLS = 5  # Maximum number of scrolls to fetch data
-COOKIES_FILE = "../../cookies.txt"  # Path to the cookies file
-DATA_DIRECTORY = "../../data"  # Directory to save fetched data
+COOKIES_FILE = "cookies.txt"  # Path to the cookies file (relative to the current directory by default the root of the project)
+DATA_DIRECTORY = "data"  # Directory to save fetched data (relative to the current directory by default the root of the project)
+
+
+class AccountLogin(ABC):
+    """
+    Abstract base class for handling account login operations.
+    This class should be extended to implement specific login mechanisms.
+    """
+
+    def __init__(self, *args, **kwargs) -> None:
+        """
+        Perform login using curl and save cookies to a file.
+        Supports multiple input formats for credentials.
+        Args:
+            *args: Positional arguments (e.g., a dictionary for user_id).
+            **kwargs: Keyword arguments (e.g., username and password).
+        Raises:
+            ValueError: If no valid input is provided.
+            KeyError: If required keys are missing in the dictionary.
+            subprocess.CalledProcessError: If the curl command fails.
+        Note: This method does not bypass Cloudfare turnstile anti-bot protection.
+        The same goes for Selenium, Playwright (cf_waiting_room remain). Use a browser instead.
+        """
+
+        # Extract credentials based on input format
+        if args and isinstance(args[0], dict):
+            user_id = args[0]
+            if "username" not in user_id or "password" not in user_id:
+                raise KeyError(
+                    "Missing required keys in user_id: 'username' and/or 'password'"
+                )
+            username, password = user_id["username"], user_id["password"]
+        elif kwargs:
+            username = kwargs.get("username")
+            password = kwargs.get("password")
+            if not username or not password:
+                raise ValueError(
+                    "Missing required keyword arguments: 'username' and/or 'password'"
+                )
+        else:
+            secrets = AccountLogin.load_secrets()
+            username, password = secrets.get("username"), secrets.get("password")
+
+        self.username, self.password = username, password
+        self.session = None
+
+    @staticmethod
+    def load_secrets(path_to_secrets: str = "secrets.yml") -> Dict[str, Any]:
+        """
+        Load configuration from a YAML file.
+        Args:
+            path_to_secrets (str): Path to the YAML configuration file.
+
+        Returns:
+            Dict[str, Any]: Configuration as a dictionary.
+
+        Raises:
+            FileNotFoundError: If the configuration file is not found.
+            ValueError: If the YAML file has invalid syntax.
+        """
+        logger.info(f"Loading configuration from: {path_to_secrets}")
+        try:
+            with open(path_to_secrets, "r", encoding="utf-8") as f:
+                config = yaml.safe_load(f)
+            if not isinstance(config, dict):
+                raise ValueError(
+                    "Configuration file must contain a dictionary at the top level."
+                )
+            return config
+        except FileNotFoundError as e:
+            logger.error(f"Configuration file '{path_to_secrets}' not found.")
+            raise
+        except yaml.YAMLError as e:
+            logger.error(
+                f"Invalid YAML format in configuration file '{path_to_secrets}': {e}"
+            )
+            raise
+
+    @abstractmethod
+    def perform_login(self, login_webpage: str):
+        """
+        Create a session and login to the account.
+        This method should be implemented in subclasses to handle specific login mechanisms.
+        Args:
+            login_webpage (str): Authentication page URL.
+        """
+        pass
+
+    @abstractmethod
+    def get_cookies(self) -> Dict[str, str]:
+        """
+        Retrieve the cookies after a successful login.
+        This method should be implemented in subclasses to return the session cookies.
+        Returns:
+            Dict[str, str]: Cookies as a dictionary.
+        """
+        pass
 
 
 class AccountAPIHandler(ABC):
     """
     Abstract wrapper base class for handling account API interactions (retail store online or physical).
+    TODO: Break it into AccountLogin, AccountAPIFetcher and AccountDataWriter.
+    Note: One can argue that writing to file and fetching is an altogether operation.
     """
 
     def __init__(
@@ -54,47 +152,6 @@ class AccountAPIHandler(ABC):
             logger.info(f"Created directory: {folder}")
 
     @abstractmethod
-    def perform_login(self, login_webpage: str, *args, **kwargs) -> None:
-        """
-        Perform login to the account.
-        Args:
-            login_webpage (str): Authentication page URL.
-            *args: Positional arguments for credentials.
-            **kwargs: Keyword arguments for credentials.
-        """
-        pass
-
-    @staticmethod
-    def load_secrets(path_to_secrets: str = "secrets.yml") -> Dict[str, Any]:
-        """
-        Load configuration from a YAML file.
-        Args:
-            path_to_secrets (str): Path to the YAML configuration file.
-        Returns:
-            Dict[str, Any]: Configuration as a dictionary.
-        Raises:
-            FileNotFoundError: If the configuration file is not found.
-            ValueError: If the YAML file has invalid syntax.
-        """
-        logger.info(f"Loading configuration from: {path_to_secrets}")
-        try:
-            with open(path_to_secrets, "r", encoding="utf-8") as f:
-                config = yaml.safe_load(f)
-            if not isinstance(config, dict):
-                raise ValueError(
-                    "Configuration file must contain a dictionary at the top level."
-                )
-            return config
-        except FileNotFoundError as e:
-            logger.error(f"Configuration file '{path_to_secrets}' not found.")
-            raise
-        except yaml.YAMLError as e:
-            logger.error(
-                f"Invalid YAML format in configuration file '{path_to_secrets}': {e}"
-            )
-            raise
-
-    @abstractmethod
     def fetch_data(
         self,
         url: str,
@@ -104,13 +161,15 @@ class AccountAPIHandler(ABC):
     ) -> Dict[str, Any]:
         """
         Fetch data from the API.
+
         Args:
             url (str): API endpoint URL.
             params (Dict[str, Any]): Query parameters for the API.
             referer (str): Indicates the referer for a more human curl command.
             verbose (bool): Whether to print detailed logs.
+
         Returns:
-            Dict[str, Any]: Parsed JSON response.
+            Dict[str, Any]: Parsed JSON response from the API.
         """
         pass
 
@@ -187,78 +246,6 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
         """
         super().__init__(cookies_file=cookies_file, dst_folder=dst_folder)
         # open for extension
-
-    def perform_login(self, login_webpage: str, *args, **kwargs) -> None:
-        """
-        Perform login using curl and save cookies to a file.
-        Supports multiple input formats for credentials.
-        Args:
-            login_webpage (str): Authentication page URL.
-            *args: Positional arguments (e.g., a dictionary for user_id).
-            **kwargs: Keyword arguments (e.g., username and password).
-        Raises:
-            ValueError: If no valid input is provided.
-            KeyError: If required keys are missing in the dictionary.
-            subprocess.CalledProcessError: If the curl command fails.
-        Note: This method does not bypass Cloudfare turnstile anti-bot protection.
-        The same goes for Selenium, Playwright (cf_waiting_room remain). Use a browser instead.
-        """
-        try:
-            # Extract credentials based on input format
-            if args and isinstance(args[0], dict):
-                user_id = args[0]
-                if "username" not in user_id or "password" not in user_id:
-                    raise KeyError(
-                        "Missing required keys in user_id: 'username' and/or 'password'"
-                    )
-                username, password = user_id["username"], user_id["password"]
-            elif kwargs:
-                username = kwargs.get("username")
-                password = kwargs.get("password")
-                if not username or not password:
-                    raise ValueError(
-                        "Missing required keyword arguments: 'username' and/or 'password'"
-                    )
-            else:
-                secrets = CarrefourAccountAPIHandler.load_secrets()
-                username, password = secrets.get("username"), secrets.get("password")
-            if username and password:
-                logger.info(f"Logging in with username: {username}")
-                CarrefourAccountAPIHandler.login_with_curl(
-                    login_webpage, username, password, self.cookies_file
-                )
-            else:
-                logger.warning("Username or password is missing.")
-                return
-
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Login failed: {e}")
-            raise
-
-    @staticmethod
-    def login_with_curl(
-        login_webpage: str, username: str, password: str, cookies_file: str
-    ) -> None:
-        """
-        Perform login using curl and save cookies to a file.
-        """
-        login_payload = f"idToken1={username}&idToken2={password}"
-        subprocess.run(
-            [
-                "curl",
-                "-c",
-                cookies_file,
-                "-d",
-                login_payload,
-                "-H",
-                "Content-Type: application/x-www-form-urlencoded",
-                "-X",
-                "POST",
-                login_webpage,
-            ],
-            check=True,
-        )
-        logger.info(f"Login successful. Cookies saved to {cookies_file}")
 
     def fetch_paginated_receipts(
         self,
@@ -496,7 +483,7 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
         except Exception as e:
             logger.error(f"Error during data fetching: {e}")
 
-    def _increment_month(self, current_date: datetime):
+    def _increment_month(self, current_date: datetime) -> datetime:
         """
         Increment the month, rolling over to the next year if necessary
         """
@@ -516,14 +503,13 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
         Args:
             url (str): API endpoint URL.
             params (Dict[str, Any]): Query parameters for the API.
-            is_online (bool): Indicates if the purchase is online or in store.
+            referer (str): Indicates the referer link for a more human curl command.
             verbose (bool): Whether to print detailed logs.
         Returns:
             Dict[str, Any]: Parsed JSON response.
         Raises:
-            FileNotFoundError: If the cookies file is not found.
-            json.JSONDecodeError: If the response cannot be parsed as JSON.
-            subprocess.CalledProcessError: If the curl command fails.
+            FileNotFoundError: If the cookies file is not found. The fetching cannot continue as long as it is not fixed.
+            subprocess.CalledProcessError: If the curl command fails, that will propagate to other fetching operations.
         """
         # cannot use empty string as a parameter
         if "" in params.values():
@@ -576,20 +562,26 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
                 text=True,
                 check=True,
             )
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to fetch API data: {e}")
+            raise    
+        try:
             data = json.loads(result.stdout)
             logger.info("Parsed JSON Data:")
             if verbose:
                 print(json.dumps(data, indent=4))
             return data
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to fetch API data: {e}")
-            raise
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse JSON response: {e}")
+            logger.debug(f"Raw response: {result.stdout}")
+            return {}
+        
 
     def extract_receipts_ids(
         self,
         criterion1: str = "carrefour_receipt_",
         criterion2: str = "",
-        output_file: str = "data/receipts_ids.csv",
+        output_file: str = f"{DATA_DIRECTORY}/receipts_ids.csv",
     ) -> None:
         """
         Extract receipt IDs from the fetched data in dst_folder.
@@ -597,6 +589,8 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
             criterion1 (str): Name criterion for JSON files.
             criterion2 (str): Additional criterion for filtering files by batch (the extraction date by default).
             output_file (str): Path to the output CSV file.
+
+        Note: This is a quick workaround to limit the number of insertions in MongoDB.
         """
         rows = []
         headers = CarrefourAccountAPIHandler.get_receipt_list_headers()
@@ -632,7 +626,7 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
         self,
         criterion1: str = "carrefour_order_",
         criterion2: str = "",
-        output_file: str = "data/orders_ids.csv",
+        output_file: str = f"{DATA_DIRECTORY}/orders_ids.csv",
     ) -> None:
         """
         Extract order IDs from the fetched data in dst_folder.
@@ -674,7 +668,7 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
         self,
         criterion1: str = "carrefour_loyalty_",
         criterion2: str = "",
-        output_file: str = "data/loyalty_ids.csv",
+        output_file: str = f"{DATA_DIRECTORY}/loyalty_ids.csv",
     ) -> None:
         """
         Extract order IDs from the fetched data in dst_folder.
@@ -735,6 +729,8 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
         self.save_data_to_file(
             data,
             f"{date_time_str}-{CarrefourAccountAPIHandler.BRAND_NAME}_receipt_{refs[headers[0]]}_details.json",
+        ) if data else logger.warning(
+            f"No data found for receipt {refs[headers[0]]}."
         )
 
     def fetch_order_details(
@@ -760,6 +756,8 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
         self.save_data_to_file(
             data,
             f"{date_time_str}-{CarrefourAccountAPIHandler.BRAND_NAME}_order_{refs[headers[0]]}_details.json",
+        ) if data else logger.warning(
+            f"No data found for order {refs[headers[0]]}."
         )
 
     def fetch_loyalty_details(
@@ -782,11 +780,16 @@ class CarrefourAccountAPIHandler(AccountAPIHandler):
             referer=CarrefourAccountAPIHandler.BRAND_REFERER.get("referer_loyalty", ""),
             verbose=verbose,
         )
-        data["operationId"] = refs[headers[0]]
-        self.save_data_to_file(
-            data,
-            f"{date_time_str}-{CarrefourAccountAPIHandler.BRAND_NAME}_loyalty_operation_{refs[headers[0]]}_details.json",
-        )
+        if data:
+            data["operationId"] = refs[headers[0]]
+            self.save_data_to_file(
+                data,
+                f"{date_time_str}-{CarrefourAccountAPIHandler.BRAND_NAME}_loyalty_operation_{refs[headers[0]]}_details.json",
+            )
+        else:
+            logger.warning(
+                f"No data found for loyalty operation {refs[headers[0]]}."
+            )
 
     @staticmethod
     def remove_duplicates_from_list(file_path: str) -> None:
@@ -987,20 +990,23 @@ def main_store():
 
     # Step 2: Fetch paginated data or whole data
     # handler.fetch_paginated_receipts(api_url, params_loyalty, max_scrolls=0, verbose=True)
+    handler.fetch_all_receipts(api_url, params_loyalty, verbose=False)
     handler.fetch_all_receipts(api_url, params_pass, verbose=False)
 
     # Step 3: Extract receipt IDs
     handler.extract_receipts_ids(
         criterion1=f"{CarrefourAccountAPIHandler.BRAND_NAME}_receipts_",
         criterion2=datetime.now().strftime("%Y%m%d"),
-        output_file="data/receipts_ids.csv",
+        output_file=f"{DATA_DIRECTORY}/receipts_ids.csv",
     )
-    CarrefourAccountAPIHandler.remove_duplicates_from_list("data/receipts_ids.csv")
+    CarrefourAccountAPIHandler.remove_duplicates_from_list(
+        f"{DATA_DIRECTORY}/receipts_ids.csv"
+    )
 
     # Step 4: Fetch receipt details
     handler.fetch_details_from_file(
         base_url=api_details_url,
-        input_file="data/receipts_ids.csv",
+        input_file=f"{DATA_DIRECTORY}/receipts_ids.csv",
         criterion=datetime.now().strftime("%Y%m%d"),
         type="receipt",
         verbose=False,
@@ -1038,14 +1044,16 @@ def main_drive():
     handler.extract_orders_ids(
         criterion1=f"{CarrefourAccountAPIHandler.BRAND_NAME}_orders_",
         criterion2=datetime.now().strftime("%Y%m%d"),
-        output_file="data/orders_ids.csv",
+        output_file=f"{DATA_DIRECTORY}/orders_ids.csv",
     )
-    CarrefourAccountAPIHandler.remove_duplicates_from_list("data/orders_ids.csv")
+    CarrefourAccountAPIHandler.remove_duplicates_from_list(
+        f"{DATA_DIRECTORY}/orders_ids.csv"
+    )
 
     # Step 4: Fetch receipt details
     handler.fetch_details_from_file(
         base_url=api_details_url,
-        input_file="data/orders_ids.csv",
+        input_file=f"{DATA_DIRECTORY}/orders_ids.csv",
         criterion=datetime.now().strftime("%Y%m%d"),
         type="order",
         verbose=False,
@@ -1067,12 +1075,12 @@ def main_loyalty():
     handler.extract_loyalty_details(
         criterion1=f"{CarrefourAccountAPIHandler.BRAND_NAME}_loyalty_transactions",
         criterion2="20250506",
-        output_file="data/loyalty_ids.csv",
+        output_file=f"{DATA_DIRECTORY}/loyalty_ids.csv",
     )
     # Step 4: Fetch receipt details
     handler.fetch_details_from_file(
         base_url=api_details_url,
-        input_file="data/loyalty_ids.csv",
+        input_file=f"{DATA_DIRECTORY}/loyalty_ids.csv",
         criterion="20250506",
         type="loyalty",
         verbose=False,

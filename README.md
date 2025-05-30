@@ -105,7 +105,7 @@ The curl must be run on the same IP as you were loading the site with.
 
 ---
 
-### **4. Data Storage & Pipelines**
+### **4. Data Storage & Pipelines (ETL)**
 
 #### **Database Design**  
 - **Storage strategy**:
@@ -153,24 +153,32 @@ We use MQL (MongoDB Query Language) with the help of either MongoDB Atlas SQL In
 - summary by month and year: total amount, total amount with VAT 5,5%
 - queries focused on products (different time granularity) with keywords `$unwind` and `$group` on the `products` key.
 
+We do not create indexes as it may induce write-heavy workloads while the collection is small. What's more, most queries involve scanning the whole collection anyway. We want analysis of all the receipts.
+
 The more complex operations such as joining and pivoting table should be deferred to **Pandas**, for example joining loyalty history and receipt details on a dateKey in a non-obvious way (several receipts with the same dateKey).
 
 The next step is to perform fuzzy join using the libraries `rapidfuzz` and `pandas` on the product labels in order to merge receipt, order and loyalty data.
 
+#### Transforming
 
+- Script extraction → transformation → storage as a Python module using Pymongo then Pandas for processing data (transformation).
+- **The loading (storage) part is not well-defined as the transform jobs also reduce the size of extracts (CSV). MongoDB can be seen as the loading tool for simple queries.**
+
+#### Loading
+  
 ### **Automation & CI/CD**  
 
 #### Pipeline orchestration 
-  - Script extraction → transformation → storage as a Python module using Pymongo then Pandas for processing data (transformation).
-  - **The loading (storage) part is not well-defined as the transform jobs also reduce the size of extracts (CSV). MongoDB can be seen as the loading tool for simple queries.**
+
   - Use GitHub Actions to schedule monthly runs (Cron jobs).
   - The cron job may need to force the opening of a new tab for login in Carrefour account which is a bit harsh for a consumer.
+  - ETL every time.
 
 #### Testing
 
 One can inspire from nba_api simple unit tests.
 
-Most useful tests are actually integration tests.
+Most useful tests are actually integration tests that do not need authentication. 
 
 - **Recommendations**
   - Write unit tests for critical functions (e.g., Cloudflare bypass, link validity, HTTPS response, JSON parsing).
@@ -247,7 +255,18 @@ Use Streamlit for prototyping machine learning models or analytics pipelines.
 
 ---
 
-### **6. Future Enhancements**  
+### **6. Future Enhancements**
+
+#### Scalability
+
+- **Cost optimization**: Migrate to AWS Glue/S3 for scalable storage if handling several loyalty cards (user accounts). Think of paying for efficient scraping (automation of login without the resort to browsers).
+- In case of Google Cloud, do not use Firestore (extract with limit 1MB per document and real-time applications) for storage -> use only MongoDBAtlas and combine it with Dataflow (Spark) or BigQuery (transform and load).
+- Use out-of-core computation libraries such as Polars (single machine) or Dask (multiple chunks across multiple cores or machines) instead of Pandas in case of several million of rows that do not fit into RAM.
+
+
+
+#### Advanced analytics
+
 - **Advanced NLP**: Use spaCy to categorize unstructured product names based on a sample of already categorized items from the Drive orders.
 - **Modification of schema**: Find a better representation of the documents so that querying does not rely on dynamic fields.  
 <!-- - **Real-time dashboards**: Integrate Kafka for live data streaming.   -->
@@ -255,8 +274,6 @@ Use Streamlit for prototyping machine learning models or analytics pipelines.
 - **Creation of a complete MongoDB pipeline** that is actionable right off the shelf. Use the full power of MongoDB.
 - Use of command-line for quick command without switching to separate application. Use of Git, etc.
 - Continuous deployment of database (Streamlit access to database).
-- Use out-of-core computation libraries such as Polars (single machine) or Dask (multiple chunks across multiple cores or machines) instead of Pandas in case of several million of rows that do not fit into RAM.
-- **Cost optimization**: Migrate to AWS Glue/S3 for scalable storage if handling several loyalty cards (user accounts). Think of paying for efficient scraping (automation of login without the resort to browsers).
 - **OOP or imperative coding**: Understand the true purpose of coding with OOP in several use cases surrounding this project.  
 - Find other API endpoints that can enrich the database, especially product-related information such as `ean` and their categories (food, hygiene, or others).
 - Talk with Carrefour shareholders about possibility to integrate this work as a microservice or a feature in the new iteration of the app.

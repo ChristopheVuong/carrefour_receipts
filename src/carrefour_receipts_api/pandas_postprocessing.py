@@ -1,42 +1,23 @@
+"""
+Utility functions for data analysis and manipulation with Pandas.
+TODO: connect with an SQL database rather for scalability
+Note: We keep this system with Pandas that we can replace with Spark if needed.
+"""
+
 from functools import lru_cache
 from typing import Dict, Any
-import unicodedata
 
 import pandas as pd
-import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
 # import re
-from rapidfuzz import process, fuzz
+from rapidfuzz import fuzz
 from sentence_transformers import SentenceTransformer
 
-DATA_DIRECTORY = "../../data"
+from utils import preprocess, fuzzy_match
 
-def preprocess(text: str):
-    """
-    Preprocess the text by removing diacritics and converting to lowercase.
-    """
-    text = text.lower()
-    # Normalize to decomposed form (split base characters and diacritics)
-    nfkd_form = unicodedata.normalize("NFKD", text)
-    text = "".join([c for c in nfkd_form if not unicodedata.combining(c)])
-
-    # Use regex to remove diacritics (Mn = Mark, Nonspacing)
-    # text = re.sub(r'\p{Mn}', '', text, flags=re.UNICODE)
-    # text = re.sub(r'[^a-zA-Z0-9\s]', ' ', text)
-    return text.strip()
-
-
-def fuzzy_match(row, choices, scorer=fuzz.WRatio, processor=None, threshold=80):
-    """
-    Perform fuzzy matching for a single row against a list of choices based on date criterion.
-    Returns the best match and its score if above the threshold.
-    """
-    result = process.extractOne(
-        row, choices, scorer=scorer, processor=processor, score_cutoff=threshold
-    )
-    return result[0] if result is not None else None
+DATA_DIRECTORY = "data"
 
 
 def embedding_to_df(
@@ -87,6 +68,101 @@ def get_cached_encode(model, text):
         return model.encode(preprocess(text))
 
     return cached_encode(text)
+
+
+def embedding_batch_to_df(
+    model,
+    df: pd.DataFrame,
+    column_name: str,
+    new_column_name: str = "embeddingLabel",
+    filter_out: str | None = None,
+    filter_in: str | None = None,
+    batch_size: int = 32,  # Batch size for encoding
+):
+    """
+    In-place computation of embedding for labels in a DataFrame using batch processing.
+    Args:
+        model : SentenceTransformer model
+        df : DataFrame with labels
+        column_name : column with labels
+        new_column_name : column to store embeddings
+        filter_out : filter out rows containing this string
+        filter_in : filter in rows containing this string
+        batch_size : batch size for encoding
+    TODO: unique embeddings and association
+    """
+    if filter_in:
+        mask = (df[column_name].notna()) & (df[column_name].str.contains(filter_in))
+        target_data = df.loc[mask, column_name]
+    else:
+        if filter_out:
+            mask = (df[column_name].isna()) | (df[column_name].str.contains(filter_out))
+        else:
+            mask = df[column_name].isna()
+        target_data = df.loc[~mask, column_name]
+
+    # Compute embeddings in batches
+    embeddings = model.encode(
+        target_data.tolist(),
+        batch_size=batch_size,
+        show_progress_bar=True,
+        convert_to_tensor=False,
+    )
+
+    # Assign embeddings back to the DataFrame
+    df.loc[target_data.index, new_column_name] = list(embeddings)
+
+
+from collections import defaultdict
+
+
+def embedding_batch_unique_to_df(
+    model,
+    df: pd.DataFrame,
+    column_name: str,
+    new_column_name: str = "embeddingLabel",
+    filter_out: str | None = None,
+    filter_in: str | None = None,
+    batch_size: int = 32,  # Batch size for encoding
+):
+    """
+    In-place computation of embedding for labels in a DataFrame using unique items.
+    Args:
+        model : SentenceTransformer model
+        df : DataFrame with labels
+        column_name : column with labels
+        new_column_name : column to store embeddings
+        filter_out : filter out rows containing this string
+        filter_in : filter in rows containing this string
+    """
+    # Apply filters
+    if filter_in:
+        mask = (df[column_name].notna()) & (df[column_name].str.contains(filter_in))
+        target_data = df.loc[mask, column_name]
+    else:
+        if filter_out:
+            mask = (df[column_name].isna()) | (df[column_name].str.contains(filter_out))
+        else:
+            mask = df[column_name].isna()
+        target_data = df.loc[~mask, column_name]
+
+    # Step 1: Identify unique items and their indices
+    unique_items_dict = defaultdict(list)
+    for idx, item in enumerate(target_data):
+        unique_items_dict[item].append(idx)
+
+    # Step 2: Compute embeddings for unique items
+    unique_items = list(unique_items_dict.keys())
+    embeddings = model.encode(
+        unique_items, batch_size=batch_size, show_progress_bar=True
+    )
+
+    # Step 3: Map embeddings back to the original indices
+    embedding_dict = dict(zip(unique_items, embeddings))
+    result_embeddings = [embedding_dict[item] for item in target_data]
+
+    # Step 4: Assign embeddings back to the DataFrame
+    df.loc[target_data.index, new_column_name] = result_embeddings
 
 
 def match_labels_df(
@@ -162,6 +238,81 @@ def match_labels_df(
                 idx += 1
 
 
+def match_labels_df_vectorized(
+    df1: pd.DataFrame,
+    df2: pd.DataFrame,
+    params: Dict[str, Any],
+    criterion: str | None = None,
+) -> None:
+    """
+    Vectorized version of matching names in columns of DataFrames.
+    Matches labels using cosine similarity and stores results in `matchedLabel`.
+
+    Note: We discard batch computation (torch) for simplicity.
+    """
+    required_params = ["col1", "col2", "newCol", "groupby1", "groupby2"]
+    if not all(param in params for param in required_params):
+        raise KeyError(
+            f"Missing required parameters: {set(required_params) - set(params.keys())}"
+        )
+
+    # Group rows by date
+    grouped_df1 = df1[df1[params["newCol"]].notna()].groupby(params["groupby1"])
+    if criterion:
+        grouped_df2 = df2[
+            (df2[params["newCol"]].notna())
+            & (df2[params["col2"]].str.contains(criterion))
+        ].groupby(params["groupby2"])
+    else:
+        grouped_df2 = df2[df2[params["newCol"]].notna()].groupby(params["groupby2"])
+
+    # Iterate over unique dates in df1
+    for date, group1 in grouped_df1:
+        if date not in grouped_df2.groups:
+            continue  # Skip if no matching date in df2
+
+        group2 = grouped_df2.get_group(date).reset_index(drop=True)
+
+        # Extract embeddings as NumPy arrays
+        embeddings1 = np.vstack(group1[params["newCol"]])
+        embeddings2 = np.vstack(group2[params["newCol"]])
+
+        # Compute pairwise cosine similarity (vectorized)
+        similarity_matrix = cosine_similarity(embeddings1, embeddings2)
+
+        # Find top matches for all rows in group1
+        top_indices = np.argsort(similarity_matrix, axis=1)[:, ::-1]  # Sort descending
+        best_match_indices = top_indices[:, 0]  # Best matches
+        second_best_match_indices = top_indices[:, 1]  # Second-best matches
+
+        # Assign best matches
+        df1.loc[group1.index, "matchedLabel1"] = group2.iloc[best_match_indices][
+            params["col2"]
+        ].values
+        df1.loc[group1.index, "similarity_score1"] = similarity_matrix[
+            np.arange(similarity_matrix.shape[0]), best_match_indices
+        ]
+
+        # Assign second-best matches (if they exist)
+        if top_indices.shape[1] > 1:
+            df1.loc[group1.index, "matchedLabel2"] = group2.iloc[
+                second_best_match_indices
+            ][params["col2"]].values
+            df1.loc[group1.index, "similarity_score2"] = similarity_matrix[
+                np.arange(similarity_matrix.shape[0]), second_best_match_indices
+            ]
+
+        # Fuzzy matching (optional, can be parallelized if needed)
+        df1.loc[group1.index, "matchedLabelFuzzy"] = group1[params["col1"]].apply(
+            lambda x: fuzzy_match(
+                x,
+                choices=group2[params["col2"]].unique(),
+                scorer=fuzz.WRatio,
+                processor=preprocess,
+            )
+        )
+
+
 def last_mode(row):
     """
     Compute the last mode, it is to say the most frequent element in the row if there is no tie, otherwise the last element.
@@ -219,7 +370,9 @@ def join_on_dates_and_match(
 def main_matching():
     # Load a pre-trained Sentence Transformer model
     # model = SentenceTransformer("all-MiniLM-L6-v2")
-    df_prod = pd.read_csv(f"{DATA_DIRECTORY}/20250501-carrefour_prods.csv", parse_dates=["dateKey"])
+    df_prod = pd.read_csv(
+        f"{DATA_DIRECTORY}/20250501-carrefour_prods.csv", parse_dates=["dateKey"]
+    )
     df_loyalty = pd.read_csv(
         f"{DATA_DIRECTORY}/20250501-carrefour_loyalty.csv", parse_dates=["date"]
     )
@@ -290,15 +443,15 @@ def main_matching():
     df_prod = input_from_csv(
         df_prod,
         filepath=f"{DATA_DIRECTORY}/20250502-carrefour_food_products_labels_most_2.csv",
-        column_name='productLabel'
+        column_name="productLabel",
     )
     df_prod.to_csv(f"{DATA_DIRECTORY}/20250501-carrefour_products.csv", index=False)
     params = {
-        "col1" : "itemLabel", 
-        "col2" : "productLabel", 
-        "newCol" : "embeddingLabel", 
-        "groupby1" : "date", 
-        "groupby2" : "dateKey"
+        "col1": "itemLabel",
+        "col2": "productLabel",
+        "newCol": "embeddingLabel",
+        "groupby1": "date",
+        "groupby2": "dateKey",
     }
     embedding_to_df(
         model,
@@ -307,9 +460,7 @@ def main_matching():
         new_column_name="embeddingLabel",
         filter_out="ART RAYON",
     )
-    model = SentenceTransformer(
-        "all-distilroberta-v1"
-    )  
+    model = SentenceTransformer("all-distilroberta-v1")
     embedding_to_df(model, df_prod, params["col2"])
 
     match_labels_df(df_loyalty, df_prod, params)
@@ -319,9 +470,13 @@ def main_matching():
     df_loyalty.loc[df_loyalty.similarity_score1 > 0.5, "matchedLabel"] = df_loyalty.loc[
         df_loyalty.similarity_score1 > 0.5, "matchedLabel1"
     ]
-    df_loyalty.loc[df_loyalty.similarity_score1 <= 0.5, "matchedLabel"] = df_loyalty.loc[
-        df_loyalty.similarity_score1 <= 0.5,
-        ["matchedLabel1", "matchedLabel2", "matchedLabelFuzzy"],
-    ].apply(last_mode, axis=1)
+    df_loyalty.loc[df_loyalty.similarity_score1 <= 0.5, "matchedLabel"] = (
+        df_loyalty.loc[
+            df_loyalty.similarity_score1 <= 0.5,
+            ["matchedLabel1", "matchedLabel2", "matchedLabelFuzzy"],
+        ].apply(last_mode, axis=1)
+    )
+
+
 if __name__ == "__main__":
     main_matching()
