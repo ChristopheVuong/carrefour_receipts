@@ -2,7 +2,7 @@ import logging
 from pymongo import MongoClient
 from typing import List, Dict, Any
 
-from mongodb_builder import get_collection, get_database
+from carrefour_receipts_api.mongodb_builder import get_collection, get_database
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import pandas as pd

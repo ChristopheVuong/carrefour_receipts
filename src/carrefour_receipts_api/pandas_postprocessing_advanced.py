@@ -6,11 +6,13 @@ import torch
 # import re
 from rapidfuzz import fuzz
 
-from utils import preprocess, fuzzy_match
+from carrefour_receipts_api.utils import preprocess, fuzzy_match
 
 DATA_DIRECTORY = "data"
 
-
+"""
+TODO: Implement data drift detection and handling.
+"""
 
 def batch_cosine_similarity(df1: pd.DataFrame, df2: pd.DataFrame, params: Dict[str, Any]) -> pd.DataFrame:
     """

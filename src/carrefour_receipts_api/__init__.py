@@ -8,3 +8,4 @@ Modules:
     mongodb_querying: Functions for querying MongoDB collections.
     user_api_extractor: Classes in order to fetch data from store API endpoints.
 """
+name = "carrefour_receipts_api"
