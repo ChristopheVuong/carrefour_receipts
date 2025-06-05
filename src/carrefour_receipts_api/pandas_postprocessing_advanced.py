@@ -2,9 +2,9 @@ from typing import Dict, Any
 
 import pandas as pd
 import numpy as np
-import torch
 # import re
 from rapidfuzz import fuzz
+import torch
 
 from carrefour_receipts_api.utils import preprocess, fuzzy_match
 

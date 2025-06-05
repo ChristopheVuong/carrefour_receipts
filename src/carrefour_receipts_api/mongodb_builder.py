@@ -253,4 +253,7 @@ def main(script_name: str = "store"):
 
 
 if __name__ == "__main__":
+    main("store")  # Default to store operations
+    main("drive")  # Default to drive operations
+    main("loyalty")  # Default to loyalty operations
     main("loyaltyOperations")

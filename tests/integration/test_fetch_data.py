@@ -1,6 +1,6 @@
 """
 Test cases for the CarrefourUserAPIHandler's fetch_data method with different arguments.
-Note: This code may be useful because the fetching part is not the essential added value of the library.
+Note: Those tests are there to detect any API key changes.
 """
 
 from datetime import datetime, timedelta
@@ -18,7 +18,7 @@ def handler():
     """Fixture to create an instance of CarrefourUserAPIHandler."""
     return CarrefourUserAPIHandler(cookies_file="cookies.txt", dst_folder="data")
 
-
+@pytest.mark.fast
 def test_fetch_receipts_list_one_scroll(handler: CarrefourUserAPIHandler):
     """
     Test the fetch_data method with a single scroll.
@@ -60,6 +60,7 @@ def test_fetch_receipts_list_one_scroll(handler: CarrefourUserAPIHandler):
         ("1030550609885801100%239223370382245035807", "invalid_hash", False),
     ],
 )
+@pytest.mark.fast
 def test_fetch_receipts_list_second_scroll(
     handler: CarrefourUserAPIHandler, scrollPaging: str, scrollHash: str, expected: bool
 ):
@@ -135,6 +136,7 @@ def date_alternative_gap_check(date_str_alternative: str):
     ],
     indirect=["date_alternative_gap_check_fixture"],
 )
+@pytest.mark.fast
 def test_fetch_loyalty_lists(
     handler: CarrefourUserAPIHandler,
     date_alternative_str: str,

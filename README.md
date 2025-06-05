@@ -14,7 +14,7 @@ Analysis of own Carrefour receipts
 
 KPIs:
 - monitor the true savings by engaging in the loyalty strategy
-- reduce waste by controlling the purchase food quantity
+- reduce waste by controlling the purchased food quantity
 - analyze food consumption to notice shifts over the years
 - see the impact of Covid on our consumption
 - analysis of how frequent we go to the mall
@@ -35,7 +35,7 @@ KPIs:
   - Analyze spending trends (rolling averages, top products), category shares (share of food spending), and temporal patterns (price evolutions of essential items) with advanced tools like Pandas.
   - Produce refined extracts with fine-grained queries in Pandas. 
   - Create a chain of Python or Bash scripts that automate the process of scraping and feeding the MongoDB database in a consistent way (appropriate error logging and caution on database-related transactions) 
-  - Build a Streamlit dashboard for visualization and API endpoint then continuous integration with Dockerhub.  
+  - **Build a Streamlit dashboard for visualization and API endpoint then continuous integration with Dockerhub.** 
 
 - **Tech Stack**:  
   - Python 3.10+ but Python 3.8+ should be enough.  
@@ -111,7 +111,7 @@ The curl must be run on the same IP as you were loading the site with.
 - **Storage strategy**:
   - Build a MongoDB database since the API response is in JSON format and can constitute a document database easy to query from with MongoDB. Use of NoSQL in the context of local data (collected from a mobile app or a laptop on a daily or weekly basis).
   - Keep the stdout as it is (JSON file containing the receipt or order details) so that analysis by NoSQL querying is not constrained. 
-  - Given a sample of 3 years, we have around 300 receipts / orders equivalent to $\approx 300 \times 20 = 6000$ rows (with overhead 10K rows max) and few columns (count on single hand). That volumetry can be handled with Pandas. The data scaling may become an issue if one consider receipts / orders from various sources or several users. Still when restraining to an individual, it is likely not an issue if the consumption is regular.
+  - Given a sample of 3 years, we have around 300 receipts / orders equivalent to $\approx 300 \times 20 = 6000$ rows (with overhead 10K rows max) and few columns (count on single hand). That volumetry can be handled with Pandas. The data scaling may become an issue if one consider receipts / orders from various sources or several users. Still when restraining to an individual, it is likely not an issue if the consumption is regular. For a cohort of users, consider Polars that can handle about million of rows.
   - Use PySpark for distributed processing if data scales beyond 1M+ rows (only plausible for purchased items). Only about a thousand rows or less for order receipts (use Pandas). 
 - **Schema enforcement**:  
   - Validate data types (e.g., `decimal` for amounts, `datetime` for timestamps in Pandas).  
@@ -155,9 +155,9 @@ We use MQL (MongoDB Query Language) with the help of either MongoDB Atlas SQL In
 
 We do not create indexes as it may induce write-heavy workloads while the collection is small. What's more, most queries involve scanning the whole collection anyway. We want analysis of all the receipts.
 
-The more complex operations such as joining and pivoting table should be deferred to **Pandas**, for example joining loyalty history and receipt details on a dateKey in a non-obvious way (several receipts with the same dateKey).
+The more complex operations such as filtering, joining and pivoting table should be deferred to **Pandas**, for example joining loyalty history and receipt details on a dateKey in a non-obvious way (several receipts with the same dateKey).
 
-The next step is to perform fuzzy join using the libraries `rapidfuzz` and `pandas` on the product labels in order to merge receipt, order and loyalty data.
+The next step is to perform fuzzy join using the libraries `rapidfuzz` or `SentenceTransformers` and `pandas` on the product labels in order to merge receipt, order and loyalty data.
 
 #### Transforming
 
@@ -172,16 +172,14 @@ The next step is to perform fuzzy join using the libraries `rapidfuzz` and `pand
 
   - Use GitHub Actions to schedule monthly runs (Cron jobs).
   - The cron job may need to force the opening of a new tab for login in Carrefour account which is a bit harsh for a consumer.
-  - ETL every time.
+
+Since the extraction of JSON needs physical login, for now, the continuous integration is not possible as the off-the-shelf VMs for isolated testing cannot validate authentication.
 
 #### Testing
 
-One can inspire from nba_api simple unit tests.
-
-Most useful tests are actually integration tests that do not need authentication. 
+Most useful tests are actually integration tests that need authentication in order to fetch data. Unit tests revolve around the use of Transformers models. 
 
 - **Recommendations**
-  - Write unit tests for critical functions (e.g., Cloudflare bypass, link validity, HTTPS response, JSON parsing).
   - Use the Playwright Pytest plugin called pytest-playwright to write end-to-end tests for authentication.
   - Consider rate limit, log successes / failures.   
   - Validate data integrity with Great Expectations (GX):  
@@ -204,7 +202,8 @@ Below is a breakdown of the key test types:
   - Rolling averages (3M/6M/yearly) using Pandas window functions.  
   - Year-over-year spending comparisons.
   - How much a year spending on non-food commodities? Filtering with VAT 20% (small amount not higher than 15-20 euros by unit).
-  - Month with the most immediate discount? Reaction from year-to-year?  
+  - Month with the most immediate discount? Reaction from year-to-year?
+- **Clustering**  
 - **Behavioral trends**:
   - Periods of the year with higher spending on a sample of three-four years
   - Drive vs in-store: what one buys
@@ -216,7 +215,6 @@ Below is a breakdown of the key test types:
    - Top 10 purchased products and evolutions of their prices
    - Evolutions of prices of main vegetables
    - Evolutions of meat prices
-   - 
 - **Quantity**
    - How many kilograms of vegetables and fruits in average?
    - How many items in average, per month?
@@ -263,11 +261,17 @@ Use Streamlit for prototyping machine learning models or analytics pipelines.
 - In case of Google Cloud, do not use Firestore (extract with limit 1MB per document and real-time applications) for storage -> use only MongoDBAtlas and combine it with Dataflow (Spark) or BigQuery (transform and load).
 - Use out-of-core computation libraries such as Polars (single machine) or Dask (multiple chunks across multiple cores or machines) instead of Pandas in case of several million of rows that do not fit into RAM.
 
+#### Test coverage
 
+Run:
+
+```bash
+pytest --cov=carrefour_receipts_api
+```
 
 #### Advanced analytics
 
-- **Advanced NLP**: Use spaCy to categorize unstructured product names based on a sample of already categorized items from the Drive orders.
+- **Advanced NLP**: Use transfer learning of categorization of big brand databases (e.g. Wallmart) and NLP techniques to categorize unstructured product names based on a sample of already categorized items from the Drive orders. The categories may be easier to find for non-food items. There are already there for purchased items in Drive orders (and more generally online purchases) but the item labels in store are more difficult to categorize (non-obvious matching of labels with ordered products).
 - **Modification of schema**: Find a better representation of the documents so that querying does not rely on dynamic fields.  
 <!-- - **Real-time dashboards**: Integrate Kafka for live data streaming.   -->
 - **Optimization of database accesses**: Find a better calendar for database access and work on how many updates one want to accurately monitor the KPIs.
@@ -288,6 +292,7 @@ Use Streamlit for prototyping machine learning models or analytics pipelines.
 - https://medium.com/@anisa.maharani/scraping-with-python-requests-aca585c17263
 - https://www.zenrows.com/blog/bypass-cloudflare#how-cloudflare-detects-bots
 - https://stackoverflow.com/questions/68289474/selenium-headless-how-to-bypass-cloudflare-detection-using-selenium
+- https://openclassrooms.com/forum/sujet/api-carrefour
 
 - https://www.zenrows.com/blog/bypass-cloudflare#fortified-headless-browsers
 - https://scrapfly.io/blog/how-to-bypass-cloudflare-anti-scraping/

@@ -1,11 +1,13 @@
 import logging
-from pymongo import MongoClient
+
 from typing import List, Dict, Any
 
 from carrefour_receipts_api.mongodb_builder import get_collection, get_database
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import pandas as pd
+from pymongo import MongoClient
+from pymongo.command_cursor import CommandCursor
 import seaborn as sns
 
 
@@ -900,6 +902,15 @@ pipeline_prod = [
     {"$sort": {"dateKey": -1}},
 ]
 
+pipeline_merge_amounts = {
+        "$merge": {
+            "into": "targetCollection",  # Write to the target collection
+            "on": ["email", "name"],  # Match documents by email and name (custom key)
+            "whenMatched": "keepExisting",  # Keep existing documents in the target collection
+            "whenNotMatched": "insert",  # Insert new documents that are not in the target collection
+        }
+    }
+
 
 def query_collection(
     pipeline: List[Dict[str, Any]],
@@ -917,11 +928,18 @@ def query_collection(
         collection = get_collection(db, collection_name=collection_name)
         # Query the collection and save it to a DataFrame
         results = collection.aggregate(pipeline)
-        df = pd.DataFrame(list(results))
-        if df.empty:
-            logger.warning("No result for this query. Please retry.")
-        else:
-            logger.info(f"Query successful with {len(df)} rows")
+        df = res_to_df(results)
+    return df
+
+def res_to_df(results: CommandCursor) -> pd.DataFrame:
+    """
+    Convert MongoDB aggregation results to a DataFrame.
+    """
+    df = pd.DataFrame(list(results))
+    if df.empty:
+        logger.warning("No result for this query. Please retry.")
+    else:
+        logger.info(f"Query successful with {len(df)} rows")
     return df
 
 
@@ -1024,14 +1042,14 @@ def main_prods(date_update: str = DEFAULT_DATE_UPDATE):
     logger.info(f"Saved table amounts to {FILEPATH}")
 
 
-def main(script_name: str = "store"):
+def main(script_name: str = "store", date_update: str = DEFAULT_DATE_UPDATE):
     match script_name:
         case "amounts":
-            main_amounts()
+            main_amounts(date_update)
         case "prods":
-            main_prods()
+            main_prods(date_update)
         case "loyalty":
-            main_loyalty()
+            main_loyalty(date_update)
         case _:
             logger.warning(
                 "Please choose between script_name: 'amounts', 'prods' or 'loyalty'."
@@ -1039,4 +1057,6 @@ def main(script_name: str = "store"):
 
 
 if __name__ == "__main__":
-    main("loyalty")
+    # main(script_name="amounts", date_update="20250601")
+    main(script_name="prods", date_update="20250601")
+    # main(script_name="loyalty", date_update="20250601")

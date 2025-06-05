@@ -19,9 +19,10 @@ pandas = "^1.5.0"  # Pandas dependency (any version compatible with 1.5.0)
 selenium = "*" # Selenium for web scraping (if needed)
 playwright = "*" # For browser automation (scraping)
 pyyaml = "^6.0.0"  # YAML parsing library
-pymongo= "^4.5.0"  # MongoDB driver for Python
+pymongo = "^4.5.0"  # MongoDB driver for Python
 rapidfuzz = "^2.0.0"  # Fast fuzzy string matching library
 seaborn = "^0.12.0"  # Data visualization library based on matplotlib
+scikit-learn = "^1.6.1"
 # python-slugify = "." # to include automatically in Poetry lock
 # greenlet = "." 
 # Beware it might be difficult to handle dependencies with playwright

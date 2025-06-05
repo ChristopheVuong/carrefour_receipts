@@ -1,5 +1,6 @@
 """
 Utility functions for data analysis and manipulation with Pandas.
+TODO: Fix the dates in file names as to be consistent and up to date.
 TODO: connect with an SQL database rather for scalability
 Note: We keep this system with Pandas that we can replace with Spark if needed.
 """
@@ -9,13 +10,11 @@ from typing import Dict, Any
 
 import pandas as pd
 import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
-
-# import re
 from rapidfuzz import fuzz
 from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
 
-from utils import preprocess, fuzzy_match
+from carrefour_receipts_api.utils import preprocess, fuzzy_match
 
 DATA_DIRECTORY = "data"
 
@@ -336,7 +335,6 @@ def input_from_csv(
     """
     input_df = pd.read_csv(filepath)
     if isinstance(column_name, str):
-        df[column_name] = input_df[column_name]
         merged_df = pd.merge(
             df, input_df, on=column_name, how="left", suffixes=("_original", "_imputed")
         )

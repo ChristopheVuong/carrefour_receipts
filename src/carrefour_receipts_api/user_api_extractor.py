@@ -22,6 +22,7 @@ MAX_SCROLLS = 5  # Maximum number of scrolls to fetch data
 COOKIES_FILE = "cookies.txt"  # Path to the cookies file (relative to the current directory by default the root of the project)
 DATA_DIRECTORY = "data"  # Directory to save fetched data (relative to the current directory by default the root of the project)
 
+# TODO: Extract fetch_receipt_all and fetch_order_all methods to a common base class
 
 class AccountLogin(ABC):
     """
@@ -273,7 +274,7 @@ class UserAPIHandler(ABC):
         filepath.write_text(
             json.dumps(data, ensure_ascii=False, indent=4), encoding="utf-8"
         )
-        logger.info(f"Data saved to: {self.dst_folder}{filename}")
+        logger.info(f"Data saved to: {self.dst_folder}/{filename}")
 
     @staticmethod
     def check_params(params: Dict[str, Any], required_params: List[str]):
@@ -630,6 +631,9 @@ class CarrefourUserAPIHandler(UserAPIHandler):
             logger.info("Parsed JSON Data:")
             if verbose:
                 print(json.dumps(data, indent=4))
+            if "code" in data and "message" in data:
+                logger.error(f"API Error: {data['code']} - {data['message']}")
+                return {}
             return data
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON response: {e}")
@@ -645,6 +649,7 @@ class CarrefourUserAPIHandler(UserAPIHandler):
     ) -> None:
         """
         Extract receipt IDs from the fetched data in dst_folder.
+        TODO: remove columns in ids.csv as to match extractions of other types of data 
         Args:
             criterion1 (str): Name criterion for JSON files.
             criterion2 (str): Additional criterion for filtering files by batch (the extraction date by default).
@@ -896,9 +901,9 @@ class CarrefourUserAPIHandler(UserAPIHandler):
         """
         match type:
             case "receipt":
-                headers = self.get_order_list_headers()
-            case "order":
                 headers = self.get_receipt_list_headers()
+            case "order":
+                headers = self.get_order_list_headers()
             case "loyalty":
                 headers = self.get_loyalty_list_headers()
             case _:
@@ -909,6 +914,7 @@ class CarrefourUserAPIHandler(UserAPIHandler):
             reader = csv.DictReader(f)
             for row in reader:
                 # criterion based on date
+                
                 if row.get("dateExtraction") != criterion:
                     continue
                 # criterion based on id
@@ -1046,13 +1052,14 @@ def main_store():
     handler = CarrefourUserAPIHandler(cookies_file=cookies_file)
 
     # # Step 1: Perform login
-    login = AccountLogin()
+    # login = AccountLogin()
     # handler.perform_login("https://www.carrefour.fr/login")
 
     # Step 2: Fetch paginated data or whole data
-    # handler.fetch_paginated_receipts(api_url, params_loyalty, max_scrolls=0, verbose=True)
-    handler.fetch_all_receipts(api_url, params_loyalty, verbose=False)
-    handler.fetch_all_receipts(api_url, params_pass, verbose=False)
+    handler.fetch_paginated_receipts(api_url, params_loyalty, max_scrolls=0, verbose=True)
+    handler.fetch_paginated_receipts(api_url, params_pass, max_scrolls=0, verbose=True)
+    # handler.fetch_all_receipts(api_url, params_loyalty, verbose=False)
+    # handler.fetch_all_receipts(api_url, params_pass, verbose=False)
 
     # Step 3: Extract receipt IDs
     handler.extract_receipts_ids(
@@ -1099,7 +1106,6 @@ def main_drive():
 
     # Step 2: Fetch paginated data or whole data
     handler.fetch_all_orders(api_url, params_drive, verbose=False)
-    # handler.fetch_all_receipts(api_url, params_pass, verbose=False)
 
     # Step 3: Extract order IDs
     handler.extract_orders_ids(
@@ -1111,7 +1117,7 @@ def main_drive():
         f"{DATA_DIRECTORY}/orders_ids.csv"
     )
 
-    # Step 4: Fetch receipt details
+    # Step 4: Fetch order details
     handler.fetch_details_from_file(
         base_url=api_details_url,
         input_file=f"{DATA_DIRECTORY}/orders_ids.csv",
@@ -1135,14 +1141,14 @@ def main_loyalty():
     handler.fetch_all_loyalty(api_url, params)
     handler.extract_loyalty_details(
         criterion1=f"{CarrefourUserAPIHandler.BRAND_NAME}_loyalty_transactions",
-        criterion2="20250506",
+        criterion2=datetime.now().strftime("%Y%m%d"),
         output_file=f"{DATA_DIRECTORY}/loyalty_ids.csv",
     )
     # Step 4: Fetch receipt details
     handler.fetch_details_from_file(
         base_url=api_details_url,
         input_file=f"{DATA_DIRECTORY}/loyalty_ids.csv",
-        criterion="20250506",
+        criterion=datetime.now().strftime("%Y%m%d"),
         type="loyalty",
         verbose=False,
     )
@@ -1164,4 +1170,6 @@ def main(script_name: str = "store"):
 
 # Main execution
 if __name__ == "__main__":
-    main("store")
+    # main("store")
+    main("drive")
+    # main("loyalty")
