@@ -1,8 +1,13 @@
-# Secret file credentials and cookies file
-secrets.yml
-cookies.txt
-carrefour_extracts.json
-extracts.md
+# Secret file credentials, cookies file and personal records in data folder
+data/
+
+# vscode and macbook confs
+*.DS_Store
+*.vs
+*.user
+*~
+*.vscode
+*.idea
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

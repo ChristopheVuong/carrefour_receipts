@@ -1,8 +1,7 @@
 """
 Utility functions for data analysis and manipulation with Pandas.
-TODO: Fix the dates in file names as to be consistent and up to date.
-TODO: connect with an SQL database rather for scalability
 Note: We keep this system with Pandas that we can replace with Spark if needed.
+TODO: Write classes for major join operations
 """
 
 from functools import lru_cache

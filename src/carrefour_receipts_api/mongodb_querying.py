@@ -3,8 +3,6 @@ import logging
 from typing import List, Dict, Any
 
 from carrefour_receipts_api.mongodb_builder import get_collection, get_database
-import matplotlib.dates as mdates
-import matplotlib.pyplot as plt
 import pandas as pd
 from pymongo import MongoClient
 from pymongo.command_cursor import CommandCursor
@@ -943,48 +941,6 @@ def res_to_df(results: CommandCursor) -> pd.DataFrame:
     return df
 
 
-def display_amounts(
-    df, col_amount: str = "totalPaidAmount", col_date: str = "dateKey", show_avg=True
-):
-    # df.plot(x='date', y=col_amount, kind='line', title='Total Paid Amount by Year and Month', marker='o')
-    # Format the X-axis to show Month-Year
-    plt.figure(figsize=(10, 6))
-    plt.plot(
-        df[col_date],
-        df[col_amount],
-        marker="o",
-        linestyle="-",
-        color="b",
-        label="Total Paid Amount",
-    )
-    if show_avg:
-        # Calculate the average total paid amount
-        average_amount = df[col_amount].mean()
-        # Add a horizontal line for the average
-        plt.axhline(
-            y=average_amount,
-            color="r",
-            linestyle="--",
-            linewidth=2,
-            label=f"Average {col_amount} ({average_amount:.2f})",
-        )
-
-    # Format the X-axis
-    plt.gca().xaxis.set_major_formatter(
-        mdates.DateFormatter("%b %Y")
-    )  # Format as "Jan 2025"
-    plt.gca().xaxis.set_major_locator(mdates.MonthLocator())  # Show one tick per month
-    plt.xticks(rotation=45)  # Rotate labels for better readability
-
-    # Add labels and title
-    plt.title("Total Amounts by Month")
-    plt.xlabel("Month-Year")
-    plt.ylabel(col_amount)
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
-
 DEFAULT_DATE_UPDATE = "20250501"
 
 def main_amounts(date_update: str = DEFAULT_DATE_UPDATE):
@@ -1059,4 +1015,4 @@ def main(script_name: str = "store", date_update: str = DEFAULT_DATE_UPDATE):
 if __name__ == "__main__":
     # main(script_name="amounts", date_update="20250601")
     main(script_name="prods", date_update="20250601")
-    # main(script_name="loyalty", date_update="20250601")
+    main(script_name="loyalty", date_update="20250601")
