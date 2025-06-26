@@ -159,6 +159,8 @@ The more complex operations such as filtering, joining and pivoting table should
 
 The next step is to perform fuzzy join using the libraries `rapidfuzz` or `SentenceTransformers` and `pandas` on the product labels in order to merge receipt, order and loyalty data.
 
+For scalable solution, one can consider **FAISS** for indexing of vector embeddings. The indices can be matched to the product labels within a receipt at a given date.
+
 #### Transforming
 
 - Script extraction → transformation → storage as a Python module using Pymongo then Pandas for processing data (transformation).
@@ -271,14 +273,17 @@ pytest --cov=carrefour_receipts_api
 
 #### Advanced analytics
 
-- **Advanced NLP**: Use transfer learning of categorization of big brand databases (e.g. Wallmart) and NLP techniques to categorize unstructured product names based on a sample of already categorized items from the Drive orders. The categories may be easier to find for non-food items. There are already there for purchased items in Drive orders (and more generally online purchases) but the item labels in store are more difficult to categorize (non-obvious matching of labels with ordered products).
-- **Modification of schema**: Find a better representation of the documents so that querying does not rely on dynamic fields.  
+- **Less Pandas**: Defer most of Pandas processing in MongoDB except complex matching labels (better prepare the dataframes). Store vector embeddings in MongoDB (create a new collection) and do most processing there.
+- Scale ETL pipeline with Apache Airflow Python, with more elaborate extraction than simple MongoDB insertion (not that complex).
+- **Advanced NLP**: Use transfer learning of categorization of big brand databases (e.g. Wallmart) and NLP techniques to categorize unstructured product names based on a sample of already categorized items from the Drive orders. The categories may be easier to find for non-food items. There are already there for purchased items in Drive orders (and more generally online purchases) but the item labels in store are more difficult to categorize (non-obvious matching of labels with ordered products). Store categories in MongoDB new collection and perform join operations (`$lookup` in query).
+- **What about LangChain OpenAI?** : Does not need complex orchestration for that type of tasks.
+- **Modification of schema**: Find a better representation of the documents so that querying does not rely on dynamic fields. 
 <!-- - **Real-time dashboards**: Integrate Kafka for live data streaming.   -->
 - **Optimization of database accesses**: Find a better calendar for database access and work on how many updates one want to accurately monitor the KPIs.
 - **Creation of a complete MongoDB pipeline** that is actionable right off the shelf. Use the full power of MongoDB.
 - Use of command-line for quick command without switching to separate application. Use of Git, etc.
 - Continuous deployment of database (Streamlit access to database).
-- **OOP or imperative coding**: Understand the true purpose of coding with OOP in several use cases surrounding this project.  
+- **OOP or imperative coding**: Understand the true purpose of coding with OOP in several use cases surrounding this project.
 - Find other API endpoints that can enrich the database, especially product-related information such as `ean` and their categories (food, hygiene, or others).
 - Talk with Carrefour shareholders about possibility to integrate this work as a microservice or a feature in the new iteration of the app.
 
@@ -316,6 +321,11 @@ pytest --cov=carrefour_receipts_api
 ### Analytics
 
 - https://blog.bruggen.com/2019/11/part-24-playing-with-carrefour-shopping.html
+
+### Semantic matching
+
+- https://huggingface.co/Alibaba-NLP/gte-multilingual-base
+- https://github.com/facebookresearch/faiss
 
 ### Continuous integration
 

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-TODO: Try batch call API for receipt ids
+TODO: Try batch call API with receipt refs
 """
 
 from abc import ABC, abstractmethod
@@ -8,7 +8,7 @@ import csv
 from datetime import datetime
 import json
 import logging
-from typing import Dict, List, Any
+from typing import Any
 import subprocess
 from pathlib import Path
 from urllib.parse import urlencode, unquote
@@ -62,10 +62,10 @@ class BaseExtractor(ABC):
     def fetch_data(
         self,
         url: str,
-        params: Dict[str, Any],
+        params: dict[str, Any],
         referer: str,
         verbose: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Fetch data from the API.
 
@@ -82,7 +82,7 @@ class BaseExtractor(ABC):
 
     @abstractmethod
     def fetch_details(
-        self, base_url: str, refs: Dict[str, Any], verbose: bool = False
+        self, base_url: str, refs: dict[str, Any], verbose: bool = False
     ) -> None:
         """
         Fetch detailed data (either receipts, orders, or loyalty data) from the API and write it to json file.
@@ -93,7 +93,7 @@ class BaseExtractor(ABC):
         """
         pass
 
-    def save_data_to_file(self, data: Dict[str, Any], filename: str) -> None:
+    def save_data_to_file(self, data: dict[str, Any], filename: str) -> None:
         """
         Save data to a JSON file in the destination folder.
         Args:
@@ -111,7 +111,7 @@ class BaseExtractor(ABC):
             logger.info(f"Data saved to: {self.dst_folder}/{filename}")
 
     @classmethod
-    def check_params(cls, params: Dict[str, Any]):
+    def check_params(cls, params: dict[str, Any]):
         for param in cls.PARAM_KEYS:
             if param not in params:
                 raise ValueError(f"Missing required parameter: {param}")
@@ -144,7 +144,7 @@ class CarrefourBaseExtractor(BaseExtractor):
     def fetch_paginated_data(
         self,
         url: str,
-        params: Dict[str, Any],
+        params: dict[str, Any],
         max_scrolls: int = MAX_SCROLLS,
         verbose: bool = False,
     ):
@@ -203,10 +203,10 @@ class CarrefourBaseExtractor(BaseExtractor):
     def fetch_data(
         self,
         url: str,
-        params: Dict[str, Any],
+        params: dict[str, Any],
         referer: str = "",
         verbose: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Fetch data from the hidden API URL using saved cookies and parse JSON.
         Args:
@@ -331,7 +331,7 @@ class CarrefourBaseExtractor(BaseExtractor):
     @classmethod
     @abstractmethod
     def append_row_data(
-        cls, item: Dict[str, Any], rows: List[List[str]], headers: List[str], criterion2: str
+        cls, item: dict[str, Any], rows: list[list[str]], headers: list[str], criterion2: str
     ) -> None:
         """
         Extract row data from the item and append record ids in inventory.
@@ -340,7 +340,7 @@ class CarrefourBaseExtractor(BaseExtractor):
 
     @classmethod
     @abstractmethod
-    def get_list_headers(cls) -> List[str]:
+    def get_list_headers(cls) -> list[str]:
         """
         Get headers for the list of records in a sheet.
         Returns:
@@ -350,7 +350,7 @@ class CarrefourBaseExtractor(BaseExtractor):
 
     @classmethod
     @abstractmethod
-    def check_refs(cls, params: Dict[str, Any]) -> None:
+    def check_refs(cls, params: dict[str, Any]) -> None:
         """
         Validate required parameters.
         Args:
@@ -390,7 +390,7 @@ class CarrefourBaseExtractor(BaseExtractor):
         logger.info(f"Duplicates removed in place. File updated: {file_path}")
 
     def fetch_details(
-        self, base_url: str, refs: Dict[str, Any], verbose: bool = False
+        self, base_url: str, refs: dict[str, Any], verbose: bool = False
     ) -> None:
         """
         Fetch detailed receipt data from the API.
@@ -420,7 +420,7 @@ class CarrefourBaseExtractor(BaseExtractor):
             )
         )
 
-    def get_full_url(self, base_url: str, refs: str, headers: str = List[str]) -> str:
+    def get_full_url(self, base_url: str, refs: str, headers: str = list[str]) -> str:
         """
         Get the full url with referenced headers in payload
         """
@@ -472,9 +472,9 @@ class CarrefourReceiptExtractor(CarrefourBaseExtractor):
     @classmethod
     def append_row_data(
         cls,
-        item: Dict[str, Any],
-        rows: List[List[str]],
-        headers: List[str],
+        item: dict[str, Any],
+        rows: list[list[str]],
+        headers: list[str],
         criterion2: str,
     ):
         """
@@ -493,7 +493,7 @@ class CarrefourReceiptExtractor(CarrefourBaseExtractor):
                 )
 
     @classmethod
-    def get_list_headers(cls) -> List[str]:
+    def get_list_headers(cls) -> list[str]:
         """
         Get headers for the receipt list in a sheet.
         Returns:
@@ -502,7 +502,7 @@ class CarrefourReceiptExtractor(CarrefourBaseExtractor):
         return ["id", "gln", "dateKey", "receiptNumber"]
 
     @classmethod
-    def check_refs(cls, params: Dict[str, Any]) -> None:
+    def check_refs(cls, params: dict[str, Any]) -> None:
         """
         Validate required references.
         Args:
@@ -513,7 +513,7 @@ class CarrefourReceiptExtractor(CarrefourBaseExtractor):
         required_params = ["gln", "dateKey", "receiptNumber"]
         check_keys(params, required_params)
 
-    def get_full_url(self, base_url: str, refs: List[str], headers: List[str]):
+    def get_full_url(self, base_url: str, refs: list[str], headers: list[str]):
         return f"{base_url}/{refs[headers[1]]}/{refs[headers[2]]}/{refs[headers[3]]}"
 
 
@@ -531,9 +531,9 @@ class CarrefourOrderExtractor(CarrefourBaseExtractor):
     @classmethod
     def append_row_data(
         cls,
-        item: Dict[str, Any],
-        rows: List[List[str]],
-        headers: List[str],
+        item: dict[str, Any],
+        rows: list[list[str]],
+        headers: list[str],
         criterion2: str,
     ):
         """
@@ -549,7 +549,7 @@ class CarrefourOrderExtractor(CarrefourBaseExtractor):
                 )
 
     @classmethod
-    def get_list_headers(cls) -> List[str]:
+    def get_list_headers(cls) -> list[str]:
         """
         Get headers for the order list in a sheet.
         Returns:
@@ -558,7 +558,7 @@ class CarrefourOrderExtractor(CarrefourBaseExtractor):
         return ["orderNumber"]
 
     @classmethod
-    def check_refs(cls, params: Dict[str, Any]) -> None:
+    def check_refs(cls, params: dict[str, Any]) -> None:
         """
         Validate required references.
         Args:
@@ -584,7 +584,7 @@ class CarrefourLoyaltyExtractor(CarrefourBaseExtractor):
     def fetch_paginated_data(
         self,
         url: str,
-        params: Dict[str, Any],
+        params: dict[str, Any],
         max_scrolls: int = MAX_SCROLLS,
         verbose: bool = False,
     ):
@@ -642,6 +642,8 @@ class CarrefourLoyaltyExtractor(CarrefourBaseExtractor):
 
                 # Save the data to a file
                 formatted_date = current_date.strftime("%m-%d-%Y").replace("/", "-")
+                # add the id YYYYMM for year and month (unique identifier in loyalty balance)
+                data["_id"] = current_date.strftime("%Y%m")  # Use strftime to write YYYYMM only
                 self.save_data_to_file(
                     data,
                     f"{date_time_str}-{formatted_date}_{CarrefourBaseExtractor.BRAND_NAME}_{self.__class__.RECORD_TYPE}s_all.json",
@@ -666,9 +668,9 @@ class CarrefourLoyaltyExtractor(CarrefourBaseExtractor):
     @classmethod
     def append_row_data(
         cls,
-        item: Dict[str, Any],
-        rows: List[List[str]],
-        headers: List[str],
+        item: dict[str, Any],
+        rows: list[list[str]],
+        headers: list[str],
         criterion2: str,
     ):
         """
@@ -684,7 +686,7 @@ class CarrefourLoyaltyExtractor(CarrefourBaseExtractor):
                 )
 
     @classmethod
-    def get_list_headers(cls) -> List[str]:
+    def get_list_headers(cls) -> list[str]:
         """
         Get headers for the record list.
         Returns:
@@ -693,7 +695,7 @@ class CarrefourLoyaltyExtractor(CarrefourBaseExtractor):
         return ["operationId"]
 
     @classmethod
-    def check_refs(cls, params: Dict[str, Any]) -> None:
+    def check_refs(cls, params: dict[str, Any]) -> None:
         """
         Validate required references.
         Args:

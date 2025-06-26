@@ -23,6 +23,8 @@ pymongo = "^4.5.0"  # MongoDB driver for Python
 rapidfuzz = "^2.0.0"  # Fast fuzzy string matching library
 seaborn = "^0.12.0"  # Data visualization library based on matplotlib
 scikit-learn = "^1.6.1"
+transformers = "^4.30.0"  # Required by sentence-transformers
+sentence-transformers = "^2.2.0" # use conda or other for pytorch installation (known issue with pytorch wheel)
 # python-slugify = "." # to include automatically in Poetry lock
 # greenlet = "." 
 # Beware it might be difficult to handle dependencies with playwright

@@ -1,5 +1,7 @@
 # Secret file credentials, cookies file and personal records in data folder
 data/
+draft/
+extracts.md
 
 # vscode and macbook confs
 *.DS_Store

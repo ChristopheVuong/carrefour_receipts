@@ -1,8 +1,13 @@
+"""
+TODO: add vector embeddings in new collection after querying.
+Retrieve product labels in a list then create embeddings for unique labels.
+Store the embeddings for later similarity matching instead of recomputing the embeddings at each Pandas processing.
+"""
 import logging
 
-from typing import List, Dict, Any
+from typing import Callable, Any
 
-from carrefour_receipts_api.mongodb_builder import get_collection, get_database
+from carrefour_receipts_api.mongodb_builder import MongoDBManager
 import pandas as pd
 from pymongo import MongoClient
 from pymongo.command_cursor import CommandCursor
@@ -901,33 +906,125 @@ pipeline_prod = [
 ]
 
 pipeline_merge_amounts = {
-        "$merge": {
-            "into": "targetCollection",  # Write to the target collection
-            "on": ["email", "name"],  # Match documents by email and name (custom key)
-            "whenMatched": "keepExisting",  # Keep existing documents in the target collection
-            "whenNotMatched": "insert",  # Insert new documents that are not in the target collection
+    "$merge": {
+        "into": "targetCollection",  # Write to the target collection
+        "on": ["email", "name"],  # Match documents by email and name (custom key)
+        "whenMatched": "keepExisting",  # Keep existing documents in the target collection
+        "whenNotMatched": "insert",  # Insert new documents that are not in the target collection
+    }
+}
+
+pipeline_prod_labels = [ # Extract labels from database of products
+    # 1st step: query from collection 'receipts'
+    {
+        "$unwind": {
+            "path": "$attributes.products.product",
+            "preserveNullAndEmptyArrays": True,
+        }
+    },
+    {
+        "$group": {
+            "_id": {
+                "productLabel": "$attributes.products.product.label",
+            },  # Group by product ID
+            "vatPercentage": {"$first": "$attributes.products.product.vatPercentage"}
+        }
+    },
+    {
+        "$addFields": {
+            "category": {
+                "$cond": {
+                    "if": {"$eq": ["$vatPercentage", "5.5"]},
+                    "then": "food",
+                    "else": "other",
+                }
+            },  # Food or non-food
+        }
+    },
+    {
+        "$project": {
+            "_id": 0,
+            "recordType": "receipt",
+            "ean": "",
+            "cdbase": "",
+            "productLabel": "$_id.productLabel",
+            "slugProductLabel": "$_id.productLabel",
+            "category": "$category",
+            "subCategory": "",
+            "embedding" : "" # empty embedding (to compute)
+        },
+    },
+    {
+        "$unionWith": {
+            "coll": "orders",
+            "pipeline": [
+                # Second pipeline: Process orders data
+                {
+                    "$unwind": {
+                        "path": "$attributes.productList.categories",
+                        "preserveNullAndEmptyArrays": True,
+                    }
+                },
+                {
+                    "$unwind": {
+                        "path": "$attributes.productList.categories.products",
+                        "preserveNullAndEmptyArrays": True,
+                    }
+                },
+                {
+                    "$project": {
+                        "ean": "$attributes.productList.categories.products.attributes.ean",
+                        "cdbase": "$attributes.productList.categories.products.attributes.cdbase",
+                        "productLabel": "$attributes.productList.categories.products.attributes.title",
+                        "slugProductLabel": "$attributes.productList.categories.products.attributes.slug",
+                        "subCategory": "$attributes.productList.categories.products.attributes.category",
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": {
+                            "ean": "$ean",
+                        },  # Group by product ID
+                        "cdbase": {"$first": "$cdbase"},
+                        "productLabel": {"$first": "$productLabel"},
+                        "slugProductLabel": {"$first": "$slugProductLabel"},
+                        "subCategory": {"$first": "$subCategory"},
+                    }
+                },
+                {
+                    "$project": {
+                        "_id": 0,
+                        "recordType": "order",
+                        "ean": "$_id.ean",
+                        "cdbase": "$cdbase",
+                        "productLabel": "$productLabel",
+                        "slugProductLabel": "$slugProductLabel",
+                        "category": "",
+                        "subCategory": "$subCategory",
+                        "embedding" : "", # empty embedding (to compute)
+                    }
+                },
+            ]
         }
     }
+     
+] # this pipeline can be stored in csv in insertion mode
 
-
-def query_collection(
-    pipeline: List[Dict[str, Any]],
-    collection_name: str = "receipts",
-    db_name: str = "carrefour",
-) -> pd.DataFrame:
-    """
-    Aggregation query with pipeline via MongoDB client and return a DataFrame for further analysis
-    """
-
-    with MongoClient(CONNECTION_STRING) as client:
-        # Get the database
-        db = get_database(client, db_name)
-        # Create a collection
-        collection = get_collection(db, collection_name=collection_name)
-        # Query the collection and save it to a DataFrame
-        results = collection.aggregate(pipeline)
-        df = res_to_df(results)
-    return df
+pipeline_loyalty_labels = [
+    {"$unwind": {"path": "$operation", "preserveNullAndEmptyArrays": True}},
+    {"$unwind": {"path": "$operation.data", "preserveNullAndEmptyArrays": True}},
+    # {
+    #     "$match": {
+    #         "operation.data.attributes.itemRd": {"$exists": True, "$ne": ""}
+    #     }
+    # },
+    {
+        "$project": {
+            "_id": 0,
+            "itemLabel": "$operation.data.attributes.itemLabel",
+        }
+    },
+] # Extract labels from loyalty transactions
 
 def res_to_df(results: CommandCursor) -> pd.DataFrame:
     """
@@ -940,8 +1037,43 @@ def res_to_df(results: CommandCursor) -> pd.DataFrame:
         logger.info(f"Query successful with {len(df)} rows")
     return df
 
+def query_collection(
+    pipeline: list[dict[str, Any]],
+    collection_name: str = "receipts",
+    db_name: str = "carrefour",
+    processing_func: Callable[[CommandCursor], pd.DataFrame] = res_to_df
+) -> pd.DataFrame:
+    """
+    Aggregation query with pipeline via MongoDB client and return a DataFrame for further analysis
+    """
+    manager = MongoDBManager(CONNECTION_STRING, db_name)
+    # with MongoClient(CONNECTION_STRING) as client:
 
-DEFAULT_DATE_UPDATE = "20250501"
+    # Create a collection
+    collection = manager.get_collection(collection_name=collection_name)
+        # Query the collection and save it to a DataFrame
+    results = collection.aggregate(pipeline)
+    df = processing_func(results)
+    manager.close_connection()
+    return df
+
+def save_to_csv(df: pd.DataFrame, filepath: str):
+    """
+    Save a DataFrame to a CSV file and log the action.
+    """
+    df.to_csv(filepath, index=False)
+    logger.info(f"Saved results to {filepath}")
+
+def compute_vector_embeddings(results: CommandCursor) -> pd.DataFrame:
+    """
+    TODO: Use Chroma DB?
+    """
+    # documents = list(results)
+    # text_data = [(doc["_id"], doc[text_field]) for doc in documents if text_field in doc]
+    # # save embeddings in Python
+    pass
+
+DEFAULT_DATE_UPDATE = "20250501" # to modify if needed (reference start)
 
 def main_amounts(date_update: str = DEFAULT_DATE_UPDATE):
     """
@@ -978,8 +1110,7 @@ def main_amounts(date_update: str = DEFAULT_DATE_UPDATE):
     for choice, discount in PAYMENT_CHOICES.items():
         table_amounts["totalTrueAmount"] -= table_amounts[choice] * discount
 
-    table_amounts.to_csv(path_or_buf=FILEPATH, index=False)
-    logger.info(f"Saved table amounts to {FILEPATH}")
+    save_to_csv(table_amounts, filepath=FILEPATH)
 
 
 def main_loyalty(date_update: str = DEFAULT_DATE_UPDATE):
@@ -994,8 +1125,18 @@ def main_prods(date_update: str = DEFAULT_DATE_UPDATE):
     FILEPATH = f"{DATA_DIRECTORY}/{date_update}-carrefour_prods.csv"
     df_receipts_prod = query_collection(pipeline_prod, collection_name="receipts")
     df_receipts_prod["dateKey"] = pd.to_datetime(df_receipts_prod["dateKey"])
-    df_receipts_prod.to_csv(path_or_buf=FILEPATH, index=False)
-    logger.info(f"Saved table amounts to {FILEPATH}")
+    save_to_csv(df_receipts_prod, filepath=FILEPATH)
+
+def main_prod_embeddings():
+    FILEPATH = f"{DATA_DIRECTORY}/carrefour_prods_embeddings.csv"
+    df_receipts_prod = query_collection(pipeline_prod_labels, collection_name='receipts')
+    save_to_csv(df_receipts_prod, filepath=FILEPATH)
+
+
+def main_loyalty_embeddings():
+    FILEPATH = f"{DATA_DIRECTORY}/carrefour_loyalty_embeddings.csv"
+    df_loyalty = query_collection(pipeline_loyalty_labels, collection_name='loyalty_transactions')
+    save_to_csv(df_loyalty, filepath=FILEPATH)
 
 
 def main(script_name: str = "store", date_update: str = DEFAULT_DATE_UPDATE):
@@ -1014,5 +1155,5 @@ def main(script_name: str = "store", date_update: str = DEFAULT_DATE_UPDATE):
 
 if __name__ == "__main__":
     # main(script_name="amounts", date_update="20250601")
-    main(script_name="prods", date_update="20250601")
+    # main(script_name="prods", date_update="20250601")
     main(script_name="loyalty", date_update="20250601")
