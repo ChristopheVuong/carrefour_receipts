@@ -4,6 +4,7 @@ Note: That may detect change in the key numbers in receipts.
 """
 
 import pytest
+
 from carrefour_receipts_api.mongodb_querying import query_collection
 
 # connection string locally

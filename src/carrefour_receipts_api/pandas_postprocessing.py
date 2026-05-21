@@ -13,8 +13,11 @@ from typing import Any, Callable
 import pandas as pd
 import numpy as np
 from rapidfuzz import fuzz
-from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
+
+# NOTE: `sentence_transformers` (and its heavy torch dependency) is imported
+# lazily inside `main_matching` so that importing this module — and the pure
+# pandas/sklearn helpers it exposes — does not require the optional `ml` extra.
 
 from carrefour_receipts_api.utils import (
     preprocess,
@@ -528,7 +531,9 @@ def main_matching(date_extract: str, threshold: float = 0.7):
         f"{DATA_DIRECTORY}/{date_extract}-carrefour_loyalty.csv", parse_dates=["date"]
     )
 
-    # Load a pre-trained Sentence Transformer model
+    # Load a pre-trained Sentence Transformer model (lazy import: optional `ml` extra)
+    from sentence_transformers import SentenceTransformer
+
     # model = SentenceTransformer("all-MiniLM-L6-v2")
     logger.info("Loading of the encoder model in order to compute embeddings.")
     # model = SentenceTransformer("all-distilroberta-v1")

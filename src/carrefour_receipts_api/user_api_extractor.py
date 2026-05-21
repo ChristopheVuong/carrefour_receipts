@@ -815,7 +815,8 @@ class CarrefourDataExtractorFactory:
         Get an extractor instance based on the specified type.
 
         Args:
-            type_ (str): Type of extractor ('receipt', 'order', or 'loyalty').
+            type_ (str): Type of extractor ('receipt', 'order', or 'loyalty_operation').
+                Must match the ``record_type`` used by ``get_fetch_payload``.
 
         Returns:
             BaseExtractor: An instance of the appropriate extractor class.
@@ -828,11 +829,11 @@ class CarrefourDataExtractorFactory:
                 return CarrefourReceiptExtractor(self.cookies_file, self.dst_folder)
             case "order":
                 return CarrefourOrderExtractor(self.cookies_file, self.dst_folder)
-            case "loyalty":
+            case "loyalty_operation":
                 return CarrefourLoyaltyExtractor(self.cookies_file, self.dst_folder)
             case _:
                 raise ValueError(
-                    "Invalid type. Choose 'receipt', 'order', or 'loyalty'."
+                    "Invalid type. Choose 'receipt', 'order', or 'loyalty_operation'."
                 )
 
 

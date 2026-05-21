@@ -11,7 +11,6 @@ from carrefour_receipts_api.mongodb_builder import MongoDBManager
 import pandas as pd
 from pymongo import MongoClient
 from pymongo.command_cursor import CommandCursor
-import seaborn as sns
 
 
 # Configure logging
