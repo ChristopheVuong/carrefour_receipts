@@ -38,3 +38,13 @@ LOYALTY_SOURCE_CSV: str = _get("LOYALTY_SOURCE_CSV", "tests/fixtures/loyalty/loy
 # against a receipt product label in the fidélité one-to-one join (dbt Python
 # model int_loyalty_matched). Env-driven so the dbt run can read it.
 FIDELITY_MATCH_THRESHOLD: float = float(_get("FIDELITY_MATCH_THRESHOLD", "0.85"))
+
+# --- Product categorization (dbt Python model int_product_categorized) ------
+# Minimum similarity (0..1) for a seed keyword to classify a product label; below
+# it the label falls back to the VAT-based category. Env-driven (dbt vars aren't
+# visible to Python models).
+CATEGORY_MATCH_THRESHOLD: float = float(_get("CATEGORY_MATCH_THRESHOLD", "0.80"))
+# Opt-in to the fastembed (ONNX) semantic categorizer instead of rapidfuzz. Off by
+# default so CI (which installs only elt + analysis, not the ml extra) stays fast
+# and deterministic.
+CATEGORY_USE_EMBEDDINGS: bool = _get("CATEGORY_USE_EMBEDDINGS", "false").lower() == "true"

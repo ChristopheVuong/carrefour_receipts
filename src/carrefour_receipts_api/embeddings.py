@@ -10,8 +10,9 @@ the ONNX Runtime, so it installs and runs on macOS x86_64 (Intel) where recent
 cached embedding helpers keep working unchanged.
 
 Embeddings are the *advanced* path for the loyalty (fidélité) label join. The
-production join lives in SQL (DuckDB ``jaro_winkler_similarity``) inside dbt; this
-module is for the higher-quality semantic matching explored in pandas.
+production join is the dbt Python model ``int_loyalty_matched`` (one-to-one Hungarian
+assignment over rapidfuzz similarity); this module is for the higher-quality semantic
+matching explored in pandas.
 """
 
 from __future__ import annotations

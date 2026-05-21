@@ -1,0 +1,31 @@
+version: 2
+
+seeds:
+  - name: seed_product_categories
+    description: >
+      Curated keyword -> (category, subcategory) reference used to classify product
+      labels. Hand-maintained (no PII); bootstrapped from the Drive-order subCategory
+      taxonomy. Consumed by the int_product_categorized Python model via rapidfuzz.
+    config:
+      column_types:
+        priority: integer
+    columns:
+      - name: keyword
+        description: "Lowercase keyword fuzzy-matched (substring) against a product label."
+        tests:
+          - not_null
+      - name: category
+        description: "Coarse category assigned when this keyword wins."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["food", "hygiene_beauty", "household", "other"]
+      - name: subcategory
+        description: "Finer label (e.g. fruit, dairy, dishwashing, oral_care)."
+        tests:
+          - not_null
+      - name: priority
+        description: "Tie-breaker: higher priority wins when similarity scores are close."
+        tests:
+          - not_null

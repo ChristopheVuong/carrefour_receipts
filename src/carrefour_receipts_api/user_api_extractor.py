@@ -7,20 +7,17 @@ from abc import ABC, abstractmethod
 import csv
 from datetime import datetime
 import json
-import logging
 from typing import Any
 import subprocess
 from pathlib import Path
 from urllib.parse import urlencode, unquote
 
 from carrefour_receipts_api.login import AccountLogin
+from carrefour_receipts_api.logging_config import get_logger
 from carrefour_receipts_api.utils import check_keys, unpack_dict_zip
 
-# Configure logging (logging to console or in log file)
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
+# Structured logging (console or JSON via LOG_JSON) — see logging_config.
+logger = get_logger(__name__)
 
 # Define constants (e.g. number of fetching iterations and personal data folder)
 MAX_SCROLLS = float("inf")  # Maximum number of scrolls to fetch data
@@ -276,14 +273,13 @@ class CarrefourBaseExtractor(BaseExtractor):
             raise
         try:
             data = json.loads(result.stdout)
-            logger.info("Parsed JSON Data:")
             if verbose:
-                print(json.dumps(data, indent=4))
+                logger.debug("parsed_json_data", data=data)
             if "code" in data and "message" in data:
-                logger.error(f"API Error: {data['code']} - {data['message']}")
+                logger.error("api_error", code=data["code"], message=data["message"])
                 return {}
             if "errors" in data:
-                logger.error(f"API Parameter Error")
+                logger.error("api_parameter_error")
                 return {}
             return data
         except json.JSONDecodeError as e:

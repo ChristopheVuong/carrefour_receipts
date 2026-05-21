@@ -1,4 +1,4 @@
--- The fidélité match score must be a valid jaro-winkler similarity in [0, 1].
+-- The fidélité match score must be a valid rapidfuzz similarity in [0, 1].
 -- A singular test: any returned row is a failure.
 select
     loyalty_line_id,

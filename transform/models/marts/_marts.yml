@@ -18,7 +18,7 @@ models:
         tests: [not_null]
 
   - name: fct_receipt_lines
-    description: "One row per receipt line item."
+    description: "One row per receipt line item, with net price and product categorization."
     columns:
       - name: receipt_id
         description: "FK to fct_receipts."
@@ -28,12 +28,25 @@ models:
               arguments:
                 to: ref('fct_receipts')
                 field: receipt_id
-      - name: category
+      - name: vat_category
+        description: "Binary VAT heuristic (food when VAT 5.5/10, else other) — always populated; the fallback for `category`."
         tests:
           - not_null
           - accepted_values:
               arguments:
                 values: ["food", "other"]
+      - name: category
+        description: "Keyword-classified category (int_product_categorized), falling back to vat_category below the similarity threshold."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["food", "hygiene_beauty", "household", "other"]
+      - name: subcategory
+        description: "Finer classification (e.g. fruit, dairy, dishwashing); NULL when the label was not confidently matched."
+      - name: category_confidence
+        description: "Similarity [0, 1] of the keyword match behind `category` (0 when it fell back to vat_category)."
+        tests: [not_null]
       - name: total_price
         tests: [not_null]
 

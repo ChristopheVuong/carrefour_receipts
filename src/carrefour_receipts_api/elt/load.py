@@ -25,7 +25,6 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import logging
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -33,9 +32,9 @@ from typing import Any
 import dlt
 
 from carrefour_receipts_api import config
+from carrefour_receipts_api.logging_config import get_logger
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Loyalty CSV columns that hold numeric amounts (coerced from str -> float|None).
 _LOYALTY_NUMERIC = ("earned", "burned", "itemRd")
@@ -56,15 +55,15 @@ def iter_receipt_files(source_dir: str | Path) -> Iterator[dict[str, Any]]:
         try:
             doc = json.loads(file.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
-            logger.warning("Skipping malformed JSON %s: %s", file, exc)
+            logger.warning("skipping_malformed_json", file=str(file), error=str(exc))
             continue
         for record in doc if isinstance(doc, list) else [doc]:
             if record and isinstance(record, dict) and record.get("id"):
                 count += 1
                 yield record
             else:
-                logger.warning("Skipping record without 'id' in %s", file)
-    logger.info("Yielded %d receipt records from %s", count, source)
+                logger.warning("skipping_record_without_id", file=str(file))
+    logger.info("receipts_yielded", count=count, source=str(source))
 
 
 @dlt.resource(name="receipts", primary_key="id", write_disposition="merge")
@@ -98,7 +97,7 @@ def iter_loyalty_rows(csv_path: str | Path) -> Iterator[dict[str, Any]]:
                     row[field] = _to_float(row[field])
             count += 1
             yield row
-    logger.info("Yielded %d loyalty rows from %s", count, path)
+    logger.info("loyalty_yielded", count=count, source=str(path))
 
 
 @dlt.resource(name="loyalty", write_disposition="replace")
@@ -145,7 +144,7 @@ def load_receipts(
 
     pipeline = _pipeline(db_path, dataset, pipelines_dir)
     info = pipeline.run(receipts_resource(source_dir))
-    logger.info("Receipts load complete -> %s (dataset=%s)", db_path, dataset)
+    logger.info("receipts_load_complete", db_path=db_path, dataset=dataset)
     return {
         "db_path": db_path,
         "dataset": dataset,
@@ -167,7 +166,7 @@ def load_loyalty(
 
     pipeline = _pipeline(db_path, dataset, pipelines_dir)
     info = pipeline.run(loyalty_resource(csv_path))
-    logger.info("Loyalty load complete -> %s (dataset=%s)", db_path, dataset)
+    logger.info("loyalty_load_complete", db_path=db_path, dataset=dataset)
     return {
         "db_path": db_path,
         "dataset": dataset,
@@ -191,7 +190,7 @@ def load_all(
 
     pipeline = _pipeline(db_path, dataset, pipelines_dir)
     info = pipeline.run([receipts_resource(source_dir), loyalty_resource(loyalty_csv)])
-    logger.info("Full load complete -> %s (dataset=%s)", db_path, dataset)
+    logger.info("full_load_complete", db_path=db_path, dataset=dataset)
     return {
         "db_path": db_path,
         "dataset": dataset,
@@ -237,4 +236,4 @@ if __name__ == "__main__":
             db_path=args.db,
             dataset=args.dataset,
         )
-    logger.info("Row counts: %s", summary["row_counts"])
+    logger.info("row_counts", **summary["row_counts"])
