@@ -53,6 +53,13 @@ dashboard = [
     "altair>=5.3",
     "duckdb>=1.1",
 ]
+# FastAPI auth service: opens the Carrefour login portal in a browser and
+# captures the session cookies (the browser flow also needs the `scraping` extra
+# for Playwright).
+api = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.30",
+]
 
 [dependency-groups]
 # `uv sync` installs these by default (dev tooling).

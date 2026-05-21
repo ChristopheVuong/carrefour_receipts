@@ -28,6 +28,12 @@ DATA_DIRECTORY: str = _get("DATA_DIRECTORY", "data")
 COOKIES_FILE: str = _get("COOKIES_FILE", f"{DATA_DIRECTORY}/cookies.txt")
 SECRETS_FILE: str = _get("SECRETS_FILE", f"{DATA_DIRECTORY}/secrets.yml")
 
+# --- Carrefour auth portal (used by the FastAPI auth service) ---------------
+# Where to send the user to authenticate, and the account area we expect after a
+# successful login (used to detect completion and harvest the session cookies).
+CARREFOUR_LOGIN_URL: str = _get("CARREFOUR_LOGIN_URL", "https://www.carrefour.fr/login")
+CARREFOUR_ACCOUNT_URL: str = _get("CARREFOUR_ACCOUNT_URL", "https://www.carrefour.fr/mon-compte")
+
 # --- Modern data stack (dlt -> DuckDB -> dbt) -------------------------------
 DUCKDB_PATH: str = _get("DUCKDB_PATH", "carrefour.duckdb")
 DUCKDB_DATASET: str = _get("DUCKDB_DATASET", "raw")

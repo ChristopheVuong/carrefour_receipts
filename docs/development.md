@@ -25,8 +25,9 @@ cp .env.example .env
 | `elt` | dlt, duckdb, dbt-duckdb | the ELT + dbt pipeline |
 | `analysis` | scikit-learn, scipy, rapidfuzz, matplotlib, seaborn | matching, categorization, plots |
 | `ml` | fastembed (ONNX, no torch) | semantic embeddings (optional) |
-| `scraping` | selenium, seleniumbase, playwright | browser-based extraction fallbacks |
+| `scraping` | selenium, seleniumbase, playwright | browser-based extraction fallbacks + auth-service browser login |
 | `dashboard` | streamlit, altair, duckdb | the analytics dashboard |
+| `api` | fastapi, uvicorn | the auth service (browser login → cookies) |
 
 `structlog` ships in the core dependencies (structured logging).
 
@@ -42,6 +43,7 @@ cp .env.example .env
 | `make build` | `elt` then `dbt` — the full pipeline |
 | `make docs-dbt` | generate + serve the dbt documentation site |
 | `make dashboard` | run the Streamlit dashboard |
+| `make auth-service` | run the FastAPI auth service (browser login → cookies) |
 | `make docker-build` / `make docker-run` | build / run the dashboard container |
 | `make clean` | remove the DuckDB file and dbt artifacts |
 
