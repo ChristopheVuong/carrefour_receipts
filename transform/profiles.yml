@@ -1,0 +1,10 @@
+# dbt-duckdb profile. The DuckDB file is produced by the dlt loader
+# (see carrefour_receipts_api.elt.load). Path is resolved relative to the
+# directory dbt runs in; override with DUCKDB_PATH (CI uses an absolute path).
+carrefour:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('DUCKDB_PATH', '../carrefour.duckdb') }}"
+      threads: 4

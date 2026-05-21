@@ -1,0 +1,21 @@
+version: 2
+
+sources:
+  - name: raw
+    description: "Raw receipt documents loaded by dlt (auto-normalized into child tables)."
+    schema: raw
+    tables:
+      - name: receipts
+        description: "One row per in-store receipt (header)."
+        columns:
+          - name: id
+            description: "Receipt natural key (gln_dateKey_receiptNumber)."
+            tests: [not_null, unique]
+      - name: receipts__attributes__products__product
+        description: "Receipt line items (child table of receipts)."
+      - name: receipts__attributes__vats
+        description: "Per-VAT-rate breakdown for each receipt."
+      - name: receipts__attributes__payment_info
+        description: "Payment splits (card, loyalty wallet, ...) per receipt."
+      - name: receipts__attributes__products__coupon
+        description: "Coupons applied on the receipt."

@@ -1,0 +1,37 @@
+{
+    "type": "receiptDetails",
+    "id": "2222222222222_20240312_7-3-1230",
+    "attributes": {
+        "dateKey": "20240312",
+        "gln": "2222222222222",
+        "retalixCode": "0042",
+        "receiptLabel": "12.03.24 12:30 0042 7 3",
+        "receiptNumber": "7-3-1230",
+        "barcode": null,
+        "storeName": "Test Store Beta",
+        "transactionDate": "2024-03-12T12:30:00",
+        "totalPaidAmount": 8.31,
+        "totalAmountBeforeDiscount": 9.31,
+        "totalAmountImmediateDiscount": 1.00,
+        "totalAmountDeferredDiscount": 0,
+        "totalAmountVats": 0.49,
+        "loyaltyCardNumber": "0000000000000000000",
+        "paymentInfo": [
+            {"amount": 8.31, "choice": "Carte bancaire", "type": "04"}
+        ],
+        "products": {
+            "product": [
+                {"vatPercentage": "5.5", "label": "CAROTTES VRAC", "quantity": 1, "weight": 0.95, "unitTypeCode": "KG", "unitPrice": 1.49, "totalPrice": 1.42, "immediateDiscount": 0},
+                {"vatPercentage": "5.5", "label": "PAIN DE MIE COMPLET", "quantity": 1, "weight": null, "unitTypeCode": "U", "unitPrice": 1.89, "totalPrice": 1.89, "immediateDiscount": 0},
+                {"vatPercentage": "20.0", "label": "DENTIFRICE MENTHE", "quantity": 2, "weight": null, "unitTypeCode": "U", "unitPrice": 3.00, "totalPrice": 5.00, "immediateDiscount": 1.00}
+            ],
+            "coupon": [
+                {"immediateDiscount": 1.00, "label": "BON -1E DENTIFRICE"}
+            ]
+        },
+        "vats": [
+            {"vatPercentage": "5.5", "vatAmount": 0.17, "vatTotalProducts": 3.31},
+            {"vatPercentage": "20.0", "vatAmount": 0.83, "vatTotalProducts": 5.00}
+        ]
+    }
+}

@@ -1,0 +1,38 @@
+version: 2
+
+models:
+  - name: dim_date
+    description: "Date dimension derived from observed receipt dates."
+    columns:
+      - name: date_day
+        tests: [not_null, unique]
+
+  - name: fct_receipts
+    description: "One row per receipt with totals and payment-method breakdown."
+    columns:
+      - name: receipt_id
+        tests: [not_null, unique]
+      - name: receipt_date
+        tests: [not_null]
+      - name: total_paid
+        tests: [not_null]
+
+  - name: fct_receipt_lines
+    description: "One row per receipt line item."
+    columns:
+      - name: receipt_id
+        description: "FK to fct_receipts."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_receipts')
+                field: receipt_id
+      - name: category
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["food", "other"]
+      - name: total_price
+        tests: [not_null]

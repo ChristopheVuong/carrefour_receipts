@@ -1,11 +1,54 @@
-<<<<<<< HEAD
+---
+noteId: "4ebc6b70550311f181f2a1a583681517"
+tags: []
+
+---
+
 # carrefour_receipts
-Analysis of own Carrefour receipts
-=======
+
+Analysis of own Carrefour receipts.
+
 <p align="center">
     <a href=""><img src="https://img.shields.io/badge/python-3.7+-aff.svg"></a>
     <a href=""><img src="https://img.shields.io/badge/os-linux%2C%20win%2C%20mac-pink.svg"></a>
 </p>
+
+---
+
+## Quickstart (modern data stack)
+
+Tooling is managed with [uv](https://docs.astral.sh/uv/). Configuration lives in
+`.env` (copy from `.env.example`; it is git-ignored). The analytics path is
+**dlt → DuckDB → dbt** instead of the legacy MongoDB aggregation pipelines.
+
+```bash
+# 1. Install (dev + ELT + analysis dependency groups)
+uv sync --extra elt --extra analysis
+
+# 2. Configure
+cp .env.example .env            # adjust paths/secrets as needed
+
+# 3. Run the data pipeline on the committed fixtures
+make build                      # = dlt load (JSON -> DuckDB) then dbt build + tests
+#   or step by step:
+uv run python -m carrefour_receipts_api.elt.load   # extract-load with dlt
+cd transform && uv run dbt build --profiles-dir .  # transform + data tests
+
+# 4. Quality gate (what CI runs)
+make lint typecheck test        # ruff + mypy + pytest (offline, no live API)
+```
+
+- **Extract-load**: `src/carrefour_receipts_api/elt/load.py` — dlt auto-unnests
+  the nested receipt JSON into child tables and merges on the receipt `id`
+  (idempotent re-runs).
+- **Transform**: `transform/` — dbt-duckdb staging + marts (`fct_receipts`,
+  `fct_receipt_lines`, `dim_date`) with schema/data tests.
+- **CI**: `.github/workflows/ci.yml` runs lint/type/test plus the full
+  dlt→DuckDB→dbt build on fixtures, with **no** authentication required. Live
+  extraction tests (`tests/integration/test_fetch_data.py`) are skipped in CI.
+
+The legacy MongoDB + Pandas modules remain under `src/carrefour_receipts_api/`
+(`mongodb_*`, `pandas_postprocessing*`) for reference during migration.
 
 ---
 
