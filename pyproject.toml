@@ -42,10 +42,14 @@ ml = [
     "fastembed>=0.4",
 ]
 # Browser-driven authentication / scraping fallbacks.
+# patchright is a drop-in Playwright fork that hides the CDP Runtime.enable leak
+# Cloudflare Turnstile detects; the auth service prefers it when present.
 scraping = [
     "selenium>=4.20",
     "seleniumbase>=4.27",
     "playwright>=1.44",
+    "patchright>=1.44",
+    "curl-cffi>=0.7",
 ]
 # Interactive analytics dashboard over the DuckDB marts (Streamlit + Altair).
 dashboard = [
@@ -59,6 +63,7 @@ dashboard = [
 api = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.30",
+    "python-multipart>=0.0.9",
 ]
 
 [dependency-groups]

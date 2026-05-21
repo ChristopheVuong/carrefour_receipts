@@ -1,15 +1,21 @@
-"""Browser-driven Carrefour login + cookie capture (Playwright).
+"""Browser-driven Carrefour login + cookie capture.
 
 Opens a real (headed) browser at the Carrefour login portal, waits for the user to
 authenticate, and once they reach the account area harvests the session cookies and
 writes them to the cookie file. This is the "token retrieval from the browser" step,
 analogous to an OAuth browser login — except the credential we keep is the cookie jar.
 
-Playwright is imported lazily so the rest of the auth service (and type-checking)
-works without the optional ``scraping`` extra installed.
+Cloudflare Turnstile detects ordinary Playwright via the Chrome DevTools Protocol
+``Runtime.enable`` leak, so we prefer **patchright** (a drop-in, CDP-leak-patched
+Playwright) when installed and fall back to vanilla Playwright otherwise. The browser
+backend is imported lazily so the rest of the auth service (and type-checking) works
+without the optional ``scraping`` extra installed.
 """
 
 from __future__ import annotations
+
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from carrefour_receipts_api import config
 from carrefour_receipts_api.auth_service.cookies import (
@@ -18,7 +24,86 @@ from carrefour_receipts_api.auth_service.cookies import (
 )
 from carrefour_receipts_api.logging_config import get_logger
 
+if TYPE_CHECKING:
+    from playwright.async_api import BrowserContext, Playwright
+
 logger = get_logger(__name__)
+
+# Vanilla-Playwright stealth tweaks. NOT applied with patchright: that backend patches
+# these itself, and the automation arg is *itself* a Cloudflare detection signal.
+_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/125.0.0.0 Safari/537.36"
+)
+_STEALTH_ARGS = ["--disable-blink-features=AutomationControlled"]
+_STEALTH_INIT = "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+
+
+def _import_backend() -> tuple[Any, str]:
+    """Return ``(async_playwright, backend_name)``, preferring patchright.
+
+    patchright is a drop-in Playwright fork that hides the CDP ``Runtime.enable`` leak
+    Cloudflare Turnstile checks; if it isn't installed we fall back to vanilla Playwright.
+    """
+    try:
+        from patchright.async_api import async_playwright as patchright_apw
+
+        return patchright_apw, "patchright"
+    except ImportError:
+        pass
+    try:
+        from playwright.async_api import async_playwright as playwright_apw
+
+        return playwright_apw, "playwright"
+    except ImportError as exc:  # pragma: no cover - depends on optional extra
+        raise RuntimeError(
+            "A browser backend is required for the browser login flow. Install one with: "
+            "uv sync --extra api --extra scraping && uv run patchright install chrome "
+            "(or 'uv run playwright install chromium')."
+        ) from exc
+
+
+async def _launch_context(p: Playwright, profile_dir: str, *, patched: bool) -> BrowserContext:
+    """Open a headed, persistent browser context tuned to survive Turnstile.
+
+    Drives a real installed browser — Chrome, then Edge — whose fingerprint is far more
+    legitimate than bundled Chromium, falling back to Chromium only if none are present.
+    ``config.BROWSER_CHANNEL`` forces a specific channel. The persistent profile means a
+    once-passed Turnstile is remembered.
+
+    With ``patched`` (patchright) we keep the launch config minimal: patchright's defaults
+    are the stealthiest, and extra args/UA overrides would re-introduce detectable signals.
+    """
+    Path(profile_dir).mkdir(parents=True, exist_ok=True)
+    kwargs: dict[str, Any] = {"headless": False}
+    if not patched:
+        kwargs["args"] = _STEALTH_ARGS
+        kwargs["user_agent"] = _USER_AGENT
+    # Forced channel, else auto-probe real browsers; final None = bundled Chromium.
+    channels: list[str | None] = (
+        [config.BROWSER_CHANNEL] if config.BROWSER_CHANNEL else ["chrome", "msedge", None]
+    )
+    context = None
+    for channel in channels:
+        try:
+            context = await p.chromium.launch_persistent_context(
+                profile_dir, channel=channel, **kwargs
+            )
+            logger.info("browser_channel", channel=channel or "chromium")
+            break
+        except Exception as exc:  # noqa: BLE001 - channel not installed -> try next
+            logger.info(
+                "browser_channel_unavailable", channel=channel or "chromium", reason=str(exc)
+            )
+    if context is None:
+        raise RuntimeError(
+            "Could not launch any browser. Install Chrome/Edge, or run "
+            "'uv run playwright install chromium'."
+        )
+    if not patched:
+        await context.add_init_script(_STEALTH_INIT)
+    return context
 
 
 async def capture_cookies_via_browser(
@@ -37,43 +122,39 @@ async def capture_cookies_via_browser(
             ``config.COOKIES_FILE``).
         timeout_s: how long to wait for the user to finish logging in.
 
-    Returns the number of cookies captured. Raises ``RuntimeError`` if Playwright is
-    not installed, or ``TimeoutError`` if login wasn't completed in time.
+    Returns the number of cookies captured. Raises ``RuntimeError`` if no browser
+    backend is installed, or ``TimeoutError`` if login wasn't completed in time.
     """
     login_url = login_url or config.CARREFOUR_LOGIN_URL
     success_url = success_url or config.CARREFOUR_ACCOUNT_URL
     cookies_file = cookies_file or config.COOKIES_FILE
 
-    try:
-        from playwright.async_api import async_playwright
-    except ImportError as exc:  # pragma: no cover - depends on optional extra
-        raise RuntimeError(
-            "Playwright is required for the browser login flow. "
-            "Install it with: uv sync --extra api --extra scraping "
-            "&& uv run playwright install chromium"
-        ) from exc
-
-    logger.info("browser_login_start", login_url=login_url, success_url=success_url)
+    async_playwright, backend = _import_backend()
+    logger.info(
+        "browser_login_start", login_url=login_url, success_url=success_url, backend=backend
+    )
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
-        context = await browser.new_context()
-        page = await context.new_page()
+        context = await _launch_context(
+            p, config.BROWSER_PROFILE_DIR, patched=(backend == "patchright")
+        )
+        page = context.pages[0] if context.pages else await context.new_page()
         await page.goto(login_url)
 
         try:
             # Wait until the user lands on the account area (login complete).
             await page.wait_for_url(f"{success_url}**", timeout=timeout_s * 1000)
         except Exception as exc:  # noqa: BLE001 - surface as a clean timeout
-            await browser.close()
+            await context.close()
             logger.error("browser_login_timeout", error=str(exc))
             raise TimeoutError(
                 "Login was not completed in time (never reached the account page)."
             ) from exc
 
         cookies = await context.cookies()
-        await browser.close()
+        await context.close()
 
-    count = write_cookies_file(playwright_cookies_to_netscape(cookies), cookies_file)
+    netscape = playwright_cookies_to_netscape([dict(c) for c in cookies])
+    count = write_cookies_file(netscape, cookies_file)
     logger.info("browser_login_captured", cookie_count=count, cookies_file=cookies_file)
     return count

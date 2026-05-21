@@ -3,7 +3,7 @@ Integration tests for the Carrefour extractors' ``fetch_data`` method.
 
 These hit the *live* Carrefour API and therefore require:
   - a valid ``data/cookies.txt`` exported from an authenticated browser session;
-  - a ``data/secrets.yml`` holding at least ``loyaltyCardNumber``.
+  - ``LOYALTY_CARD_NUMBER`` set in ``.env`` (loaded by ``config``).
 
 They are marked ``integration`` and skipped automatically when those
 prerequisites are missing (e.g. in CI). Their purpose is to detect breaking
@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from carrefour_receipts_api.login import AccountLogin
+from carrefour_receipts_api import config
 from carrefour_receipts_api.user_api_extractor import (
     CarrefourLoyaltyExtractor,
     CarrefourReceiptExtractor,
@@ -23,15 +23,14 @@ from carrefour_receipts_api.user_api_extractor import (
 
 pytestmark = pytest.mark.integration
 
-DATA_DIRECTORY = "data"
-COOKIES_FILE = f"{DATA_DIRECTORY}/cookies.txt"
-SECRETS_FILE = f"{DATA_DIRECTORY}/secrets.yml"
+DATA_DIRECTORY = config.DATA_DIRECTORY
+COOKIES_FILE = config.COOKIES_FILE
 
 # Skip the whole module unless live credentials are available locally.
-if not (Path(COOKIES_FILE).exists() and Path(SECRETS_FILE).exists()):
+if not (Path(COOKIES_FILE).exists() and config.LOYALTY_CARD_NUMBER):
     pytest.skip(
         "Live Carrefour credentials missing "
-        f"({COOKIES_FILE} and/or {SECRETS_FILE}); skipping integration tests.",
+        f"({COOKIES_FILE} and/or LOYALTY_CARD_NUMBER); skipping integration tests.",
         allow_module_level=True,
     )
 
@@ -50,9 +49,8 @@ def loyalty_extractor() -> CarrefourLoyaltyExtractor:
 
 @pytest.fixture
 def loyalty_params() -> dict[str, str]:
-    config = AccountLogin.load_secrets(path_to_secrets=SECRETS_FILE)
     return {
-        "loyaltyCardNumber": config.get("loyaltyCardNumber"),
+        "loyaltyCardNumber": f"{config.LOYALTY_CARD_NUMBER}",
         "loyaltyCardType": "LOYALTY",
     }
 
@@ -76,6 +74,8 @@ def test_fetch_receipts_list_one_scroll(
     assert "scrollHash" in data["meta"]
 
 
+# scrollPaging is a point-in-time pagination cursor (an internal account/page id, distinct
+# from the loyalty card). It's a stale magic value tied to a past page snapshot.
 @pytest.mark.parametrize(
     "scroll_paging, scroll_hash, expected",
     [
@@ -135,7 +135,11 @@ def _date_within_last_year(date_str: str) -> bool:
 def test_fetch_loyalty_lists(loyalty_extractor: CarrefourLoyaltyExtractor, date_str: str):
     """Loyalty history is only returned for dates within the last year."""
     month, year = int(date_str[:2]), int(date_str[-4:])
-    params = {"date": datetime(year=year, month=month, day=1).strftime("%m/01/%Y")}
+    params = {
+        "loyaltyCardNumber": f"{config.LOYALTY_CARD_NUMBER}",
+        "loyaltyCardType": "LOYALTY",
+        "date": datetime(year=year, month=month, day=1).strftime("%m/01/%Y"),
+    }
 
     data = loyalty_extractor.fetch_data(
         CarrefourLoyaltyExtractor.API_URL,
@@ -146,7 +150,11 @@ def test_fetch_loyalty_lists(loyalty_extractor: CarrefourLoyaltyExtractor, date_
 
     assert isinstance(data, dict)
     assert "history" in data
+    history = data.get("history") or []
     if _date_within_last_year(date_str):
-        assert isinstance(data.get("history", [{}])[0].get("earned"), float)
+        # In range the endpoint returns history; a month with no operations is still
+        # valid (empty list), so only assert the payload shape when there is data.
+        if history:
+            assert isinstance(history[0].get("earned"), float)
     else:
-        assert not data.get("history")
+        assert not history

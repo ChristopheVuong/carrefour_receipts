@@ -28,11 +28,33 @@ DATA_DIRECTORY: str = _get("DATA_DIRECTORY", "data")
 COOKIES_FILE: str = _get("COOKIES_FILE", f"{DATA_DIRECTORY}/cookies.txt")
 SECRETS_FILE: str = _get("SECRETS_FILE", f"{DATA_DIRECTORY}/secrets.yml")
 
+# --- Loyalty / fidélité identifiers (PII — keep in .env, never commit) -------
+# Carrefour card numbers used as query params on the receipt/loyalty endpoints.
+# Previously read from data/secrets.yml; now env-driven so they live in .env.
+LOYALTY_CARD_NUMBER: str = _get("LOYALTY_CARD_NUMBER", "")
+PASS_CARD_NUMBER: str = _get("PASS_CARD_NUMBER", "")
+
 # --- Carrefour auth portal (used by the FastAPI auth service) ---------------
 # Where to send the user to authenticate, and the account area we expect after a
 # successful login (used to detect completion and harvest the session cookies).
 CARREFOUR_LOGIN_URL: str = _get("CARREFOUR_LOGIN_URL", "https://www.carrefour.fr/login")
 CARREFOUR_ACCOUNT_URL: str = _get("CARREFOUR_ACCOUNT_URL", "https://www.carrefour.fr/mon-compte")
+
+# Persistent browser profile for the Playwright login flow. Reusing a real profile
+# (history, prior Turnstile passes) makes the browser look like a returning user, so
+# Cloudflare Turnstile is far less likely to challenge. Lives under data/ (git-ignored).
+BROWSER_PROFILE_DIR: str = _get("BROWSER_PROFILE_DIR", f"{DATA_DIRECTORY}/browser_profile")
+
+# Which real browser Playwright should drive (real-browser fingerprints clear Turnstile
+# far better than bundled Chromium). Empty = auto: try Chrome, then Edge, then Chromium.
+# Set to a Playwright channel ("chrome", "msedge", ...) to force one.
+BROWSER_CHANNEL: str = _get("BROWSER_CHANNEL", "")
+
+# TLS fingerprint the extractor's HTTP client (curl_cffi) impersonates. Cloudflare binds
+# the cf_clearance cookie to the JA3 of the browser that solved the challenge, so plain
+# curl/requests/httpx (OpenSSL) get a 403; curl_cffi reproduces a real browser handshake.
+# Must match the browser family used for the auth-service login (default Edge).
+CARREFOUR_TLS_IMPERSONATE: str = _get("CARREFOUR_TLS_IMPERSONATE", "edge101")
 
 # --- Modern data stack (dlt -> DuckDB -> dbt) -------------------------------
 DUCKDB_PATH: str = _get("DUCKDB_PATH", "carrefour.duckdb")

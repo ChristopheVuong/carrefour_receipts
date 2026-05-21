@@ -16,12 +16,17 @@ runs on the exported files.
 
 ## Why it's not a plain `requests` call
 
-The Carrefour site is behind Cloudflare and uses `SameSite` cookies, so a bare HTTP
-client can't authenticate. The supported path is the **auth service** below; two manual
-fallbacks also exist.
+The Carrefour site is behind Cloudflare. Two distinct walls:
 
-Once authenticated, the API responses are fetched with `curl` (subprocess) — chained GET
-requests need no pause once the session is alive.
+1. **Getting the cookies** — Cloudflare Turnstile challenges the login page. The supported
+   path is the **auth service** below (patched browser); two manual fallbacks also exist.
+2. **Using the cookies** — Cloudflare binds the `cf_clearance` cookie to the **TLS
+   fingerprint (JA3)** of the browser that solved the challenge. `requests`, `httpx` and
+   plain `curl` all use OpenSSL, whose handshake doesn't match a browser, so they get a
+   `403 cf-mitigated: challenge` *even with valid cookies*. The extractor therefore fetches
+   with **[`curl_cffi`](https://github.com/lexiforest/curl_cffi)** (curl-impersonate /
+   BoringSSL), reproducing a real browser's handshake. The impersonation target is
+   `CARREFOUR_TLS_IMPERSONATE` (default `edge101`) and must match the login browser family.
 
 ## Auth service (browser login → cookies)
 
@@ -50,6 +55,22 @@ Open <http://127.0.0.1:8000> and pick:
 Cookies are written in the **Netscape format** that the extractor's `curl -b` calls
 expect, at `config.COOKIES_FILE` (default `data/cookies.txt`). Configure the portal URLs
 with `CARREFOUR_LOGIN_URL` / `CARREFOUR_ACCOUNT_URL`.
+
+**Cloudflare Turnstile.** Turnstile detects ordinary Playwright through the Chrome
+DevTools Protocol `Runtime.enable` leak, so the flow prefers **[patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright)**
+— a drop-in, CDP-leak-patched Playwright fork — when it's installed (`scraping` extra),
+falling back to vanilla Playwright otherwise. It also drives a **real installed browser**
+(auto-probes Chrome → Edge → bundled Chromium; force one with `BROWSER_CHANNEL`) and reuses
+a **persistent profile** at `BROWSER_PROFILE_DIR` (default `data/browser_profile`,
+git-ignored) so a once-passed challenge is remembered.
+
+```bash
+uv run patchright install chromium     # patched browser for the best Turnstile evasion
+```
+
+Turnstile also weighs IP reputation and behavioral signals, so even patched automation can
+be challenged. When that happens, use the manual `POST /cookies` paste below — you log in
+in your own normal browser (no automation at all), so it always works.
 
 ### Manual fallbacks (no service)
 

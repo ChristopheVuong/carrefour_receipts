@@ -27,6 +27,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 import undetected_chromedriver as uc
 import yaml
 
+from carrefour_receipts_api import config
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -291,7 +293,7 @@ class NetworkScraper:
 
 #     # Arguments for HTTPX request
 #     url = "https://www.carrefour.fr/api/user/secured/loyalty/orders/receipts"
-#     params = {"loyaltyCardNumber": "9135720000005422294", "loyaltyCardType": "LOYALTY"}
+#     params = {"loyaltyCardNumber": config.LOYALTY_CARD_NUMBER, "loyaltyCardType": "LOYALTY"}
 #     HEADERS = {
 #         "Accept": "application/json, text/plain, */*",
 #         "Accept-Language": "fr,fr-FR;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
@@ -822,7 +824,10 @@ if __name__ == "__main__":
     # arguments for requests
     # TODO: put in SECRETS
     url = "https://www.carrefour.fr/api/user/secured/loyalty/orders/receipts"
-    params = {"loyaltyCardNumber": "9135720000005422294", "loyaltyCardType": "LOYALTY"}
+    params = {
+        "loyaltyCardNumber": f"{config.LOYALTY_CARD_NUMBER}",
+        "loyaltyCardType": "LOYALTY",
+    }
     # headers = {
     #     "accept": "application/json, text/plain, */*",
     #     "accept-language": "fr,fr-FR;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",

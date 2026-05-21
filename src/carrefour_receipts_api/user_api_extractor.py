@@ -6,13 +6,13 @@ TODO: Try batch call API with receipt refs
 from abc import ABC, abstractmethod
 import csv
 from datetime import datetime
+from http.cookiejar import MozillaCookieJar
 import json
-from typing import Any
-import subprocess
+from typing import Any, cast
 from pathlib import Path
 from urllib.parse import urlencode, unquote
 
-from carrefour_receipts_api.login import AccountLogin
+from carrefour_receipts_api import config
 from carrefour_receipts_api.logging_config import get_logger
 from carrefour_receipts_api.utils import check_keys, unpack_dict_zip
 
@@ -215,7 +215,7 @@ class CarrefourBaseExtractor(BaseExtractor):
             Dict[str, Any]: Parsed JSON response.
         Raises:
             FileNotFoundError: If the cookies file is not found. The fetching cannot continue as long as it is not fixed.
-            subprocess.CalledProcessError: If the curl command fails, that will propagate to other fetching operations.
+            RuntimeError: If curl_cffi is not installed (needed to pass Cloudflare).
         """
         # cannot use empty string as a parameter
         if "" in params.values():
@@ -225,54 +225,54 @@ class CarrefourBaseExtractor(BaseExtractor):
 
         api_url = f"{url}?{urlencode(params)}" if params else url
 
-        logger.info(f"Fetching data from: {api_url}")
-        curl_command = [
-            "curl",
-            "-X",
-            "GET",
-            api_url,
-            "-H",
-            "accept: application/json, text/plain, */*",
-            "-H",
-            "accept-language: fr,fr-FR;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
-            "-b",
-            self.cookies_file,
-            "-H",
-            "dnt: 1",
-            "-H",
-            "priority: u=1, i",
-            "-H",
-            f"referer: {referer}",
-            "-H",
-            'sec-ch-ua: "Microsoft Edge";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
-            "-H",
-            "sec-ch-ua-mobile: ?0",
-            "-H",
-            'sec-ch-ua-platform: "macOS"',
-            "-H",
-            "sec-fetch-dest: empty",
-            "-H",
-            "sec-fetch-mode: cors",
-            "-H",
-            "sec-fetch-site: same-origin",
-            "-H",
-            "user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0",
-            "-H",
-            "x-requested-with: XMLHttpRequest",
-        ]
+        # curl_cffi reproduces a real browser's TLS handshake (JA3); plain curl/requests/
+        # httpx use OpenSSL and get a 403 because Cloudflare binds cf_clearance to the JA3
+        # of the browser that solved the challenge. See config.CARREFOUR_TLS_IMPERSONATE.
         try:
-            # realistic request headers
-            result = subprocess.run(
-                curl_command,
-                capture_output=True,
-                text=True,
-                check=True,
+            from curl_cffi import requests as cffi_requests
+        except ImportError as exc:  # pragma: no cover - depends on optional extra
+            raise RuntimeError(
+                "curl_cffi is required to reach the Carrefour API past Cloudflare. "
+                "Install it with: uv sync --extra scraping"
+            ) from exc
+
+        jar = MozillaCookieJar(self.cookies_file)
+        jar.load(ignore_discard=True, ignore_expires=True)
+        cookies = {c.name: c.value for c in jar if c.value is not None}
+
+        headers = {
+            "accept": "application/json, text/plain, */*",
+            "accept-language": "fr,fr-FR;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
+            "dnt": "1",
+            "priority": "u=1, i",
+            "referer": referer,
+            "sec-ch-ua": '"Microsoft Edge";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"macOS"',
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-origin",
+            "x-requested-with": "XMLHttpRequest",
+        }
+
+        logger.info("api_fetch", url=api_url, impersonate=config.CARREFOUR_TLS_IMPERSONATE)
+        try:
+            response = cffi_requests.get(
+                api_url,
+                headers=headers,
+                cookies=cookies,
+                impersonate=cast(Any, config.CARREFOUR_TLS_IMPERSONATE),
+                timeout=30,
             )
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to fetch API data: {e}")
+        except Exception as e:  # noqa: BLE001 - surface a transport failure
+            logger.error("api_fetch_failed", error=str(e))
             raise
+        # Non-2xx (e.g. an invalid scroll cursor -> 500, or a Cloudflare 403) degrade
+        # gracefully to {}: the body is parsed below and falls through to the error paths.
+        if response.status_code != 200:
+            logger.warning("api_non_ok_status", status=response.status_code)
         try:
-            data = json.loads(result.stdout)
+            data = json.loads(response.text)
             if verbose:
                 logger.debug("parsed_json_data", data=data)
             if "code" in data and "message" in data:
@@ -284,7 +284,7 @@ class CarrefourBaseExtractor(BaseExtractor):
             return data
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON response: {e}")
-            logger.debug(f"Raw response: {result.stdout}")
+            logger.debug(f"Raw response: {response.text}")
             return {}
 
     def extract_ids(
@@ -761,14 +761,10 @@ def get_fetch_payload(record_type: str):
     """
     match record_type:
         case "receipt":
-            config = AccountLogin.load_secrets(
-                path_to_secrets=f"{DATA_DIRECTORY}/secrets.yml"
-            )
-
             return {
                 "loyaltyCardNumber": [
-                    config.get("loyaltyCardNumber", ""),
-                    config.get("passCardNumber", ""),
+                    f"{config.LOYALTY_CARD_NUMBER}",
+                    f"{config.PASS_CARD_NUMBER}",
                 ],
                 "loyaltyCardType": ["LOYALTY", "PASS_MASTERCARD"],
             }
@@ -781,7 +777,11 @@ def get_fetch_payload(record_type: str):
                 "endDate": unquote(f"{end_date}T00%3A00%3A00.000Z"),
             }
         case "loyalty_operation":
-            return {"date": "04/01/2022"}
+            return {
+                "loyaltyCardNumber": f"{config.LOYALTY_CARD_NUMBER}",
+                "loyaltyCardType": "LOYALTY",
+                "date": "04/01/2022",
+            }
         case _:
             logger.warning(
                 "Please choose between record_type: 'receipt', 'order' or 'loyalty_operation'."

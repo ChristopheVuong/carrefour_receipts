@@ -85,6 +85,8 @@ defaults in [.env.example](../.env.example):
 | --- | --- | --- |
 | `DATA_DIRECTORY` | `data` | root for cookies/secrets/extracts |
 | `COOKIES_FILE`, `SECRETS_FILE` | `data/cookies.txt`, `data/secrets.yml` | auth inputs |
+| `LOYALTY_CARD_NUMBER`, `PASS_CARD_NUMBER` | _(empty)_ | fidélité card numbers (PII) — receipt/loyalty endpoint params |
+| `CARREFOUR_TLS_IMPERSONATE` | `edge101` | curl_cffi browser TLS fingerprint (past Cloudflare) |
 | `DUCKDB_PATH` | `carrefour.duckdb` | DuckDB file (also read by the dbt profile) |
 | `DUCKDB_DATASET` | `raw` | dlt target schema |
 | `RECEIPTS_SOURCE_DIR`, `LOYALTY_SOURCE_CSV` | fixtures | ELT inputs |
