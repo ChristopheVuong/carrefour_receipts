@@ -3,6 +3,14 @@ data/
 draft/
 extracts.md
 
+# Modern data stack generated artifacts (dlt / DuckDB / dbt)
+*.duckdb
+*.duckdb.wal
+.dlt/
+transform/target/
+transform/logs/
+transform/dbt_packages/
+
 # vscode and macbook confs
 *.DS_Store
 *.vs

@@ -1,54 +1,95 @@
-[tool.poetry]
-name = "carrefour_receipts_api"  # Name of your package (destined to be an API)
-version = "0.1.0"          # Version number (follow semantic versioning)
-description = "A Python package for extracting Carrefour receipts."
-authors = ["Christophe Vuong <christophe.vuong108@gmail.com>"]  # Your name and email
-license = "MIT"  # License type
-readme = "README.md"  # Path to your README file
-repository = "https://github.com/ChristopheVuong/carrefour_receipts"  # Updated link to your repository
-keywords = ["retail", "shopping", "e-commerce", "analytics", "finance"]  # Keywords for discoverability
+[project]
+name = "carrefour_receipts_api"
+version = "0.1.0"
+description = "Extract, model and analyze personal Carrefour receipts (modern data stack: dlt + DuckDB + dbt)."
+authors = [{ name = "Christophe Vuong", email = "christophe.vuong108@gmail.com" }]
+license = { text = "MIT" }
+readme = "README.md"
+requires-python = ">=3.10"
+keywords = ["retail", "shopping", "e-commerce", "analytics", "finance"]
 
-[tool.poetry.dependencies]
-python = "^3.10"  # Minimum Python version required > 3.8 (stability and compatibility compared to 3.11)
-# beautifulsoup4 = "*" # for scraping here and there (no need for now)
-httpx = "^0.24.0"  # HTTP client for making requests
-matplotlib = "^3.7.0"  # For plotting and visualizing data
-requests = "*"  # Added dependency for handling HTTP requests
-numpy = "^1.23.0"  # Numerical operations library
-pandas = "^1.5.0"  # Pandas dependency (any version compatible with 1.5.0)
-selenium = "*" # Selenium for web scraping (if needed)
-seleniumbase = "^4.21.0" # Seleniumbase in order to bypass Cloudfare turnstile
-playwright = "*" # For browser automation (scraping) # to remove later
-pyyaml = "^6.0.0"  # YAML parsing library
-pymongo = "^4.5.0"  # MongoDB driver for Python
-rapidfuzz = "^2.0.0"  # Fast fuzzy string matching library
-seaborn = "^0.12.0"  # Data visualization library based on matplotlib
-scikit-learn = "^1.6.1"
-# transformers = "^4.30.0"  # Required by sentence-transformers (conda or other dependency manager
-# sentence-transformers = "^2.2.0" # use conda or other for pytorch installation (known issue with pytorch wheel)
-# leave the torch dependency issue in poetry command output
-# python-slugify = "." # to include automatically in Poetry lock
-# greenlet = "." 
-# Beware it might be difficult to handle dependencies with playwright
+# Core runtime: extraction + tabular analysis. Kept deliberately light so CI
+# and the ELT path install fast. Heavy/optional pieces live in the extras below.
+dependencies = [
+    "httpx>=0.27",
+    "requests>=2.31",
+    "pyyaml>=6.0",
+    "pandas>=2.0",
+    "numpy>=1.26",
+    "python-dateutil>=2.9",
+    "python-dotenv>=1.0",
+]
 
-[tool.poetry.group.dev.dependencies]
-pytest = "^7.0.0"  # Development dependency for testing
-black = "^23.0.0"  # Code formatting tool
-flake8 = "^6.0.0"  # Linting tool
+[project.optional-dependencies]
+# Modern data stack: extract-load (dlt) -> DuckDB -> transform (dbt).
+elt = [
+    "dlt[duckdb]>=1.5",
+    "duckdb>=1.1",
+    "dbt-duckdb>=1.9",
+]
+# Classic pandas/sklearn analysis + legacy MongoDB path.
+analysis = [
+    "scikit-learn>=1.4",
+    "scipy>=1.11",
+    "rapidfuzz>=3.0",
+    "matplotlib>=3.8",
+    "seaborn>=0.13",
+    "pymongo>=4.6",
+]
+# Semantic label matching (pulls torch transitively — keep isolated).
+ml = [
+    "sentence-transformers>=3.0",
+]
+# Browser-driven authentication / scraping fallbacks.
+scraping = [
+    "selenium>=4.20",
+    "seleniumbase>=4.27",
+    "playwright>=1.44",
+]
 
-# TODO: TO COMPLETE (additional development dependencies and scripts here)
-# [tool.poetry.scripts]
-# download-data = "src.download_data:main"  # a script to automate scraping
+[dependency-groups]
+# `uv sync` installs these by default (dev tooling).
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+    "mypy>=1.10",
+    "pandas-stubs>=2.0",
+    "types-PyYAML>=6.0",
+    "types-requests>=2.31",
+]
 
-[tool.poetry.urls]
-"Repository" = "https://github.com/ChristopheVuong/carrefour_receipts"
-"Documentation" = "https://github.com/ChristopheVuong/carrefour_receipts/blob/main/README.md"
+[project.urls]
+Repository = "https://github.com/ChristopheVuong/carrefour_receipts"
+Documentation = "https://github.com/ChristopheVuong/carrefour_receipts/blob/main/README.md"
 "Bug Tracker" = "https://github.com/ChristopheVuong/carrefour_receipts/issues"
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]  # Required for building the package
-build-backend = "poetry.core.masonry.api"  # Build backend for Poetry
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/carrefour_receipts_api"]
 
 [tool.pytest.ini_options]
-testpaths = ["./tests/unit/",
-    "./tests/integration/"]  # Paths to test directories
+testpaths = ["tests/unit", "tests/integration"]
+markers = [
+    "fast: quick tests safe to run everywhere",
+    "slow: heavy tests (embeddings, models) — opt in",
+    "integration: hits the live Carrefour API; requires local credentials",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# Legacy modules carry pre-existing style debt; tighten incrementally.
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+files = ["src/carrefour_receipts_api"]

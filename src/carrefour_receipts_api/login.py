@@ -7,14 +7,16 @@ from urllib.parse import unquote
 
 import yaml
 
+from carrefour_receipts_api import config
+
 # Configure logging (logging to console or in log file)
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-DATA_DIRECTORY = "data"  # Directory to save fetched data (relative to the current directory by default the root of the project)
-COOKIES_FILE = f"{DATA_DIRECTORY}/cookies.txt"  # Path to the cookies file (relative to the current directory by default the root of the project)
+DATA_DIRECTORY = config.DATA_DIRECTORY  # from env / .env (default: "data")
+COOKIES_FILE = config.COOKIES_FILE  # path to the cookies file (from env / .env)
 
 class AccountLogin(ABC):
     """
@@ -61,7 +63,7 @@ class AccountLogin(ABC):
         self.cookies_file = None
 
     @staticmethod
-    def load_secrets(path_to_secrets: str = "secrets.yml") -> Dict[str, Any]:
+    def load_secrets(path_to_secrets: str = config.SECRETS_FILE) -> Dict[str, Any]:
         """
         Load configuration from a YAML file.
         Args:
