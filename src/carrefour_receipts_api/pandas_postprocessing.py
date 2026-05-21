@@ -2,7 +2,8 @@
 Utility functions for data analysis and manipulation with Pandas.
 Note: We keep this system with Pandas that we can replace with Spark if needed.
 TODO: Write logging and timing in order to monitor the bottleneck part of the code
-TODO: Write classes for major join operations
+TODO: Write classes for major join operations, and regroup processing into pipelines as with MongoDB.
+TODO: Write a distinct file for constants or not? Best practices?
 """
 
 from functools import lru_cache
@@ -20,6 +21,7 @@ from carrefour_receipts_api.utils import (
     fuzzy_match,
     find_best_pairings_one_by_one,
     find_maximum_similarity_matching,
+    input_from_csv
 )
 
 
@@ -180,13 +182,92 @@ def embedding_batch_unique_to_df(
     )
 
 
+# def match_labels_df(
+#     df1: pd.DataFrame,
+#     df2: pd.DataFrame,
+#     params: dict[str, Any],
+#     criterion: str | None = None,
+# ) -> None:
+#     """Matching names in columns of DataFrames (by default the result is stored in the column matchedLabel)
+#     Args:
+#         df1 : DataFrame with labels to match
+#         df2 : DataFrame with labels to match against
+#         params : dictionary with keys being the column names and columns to group by
+#             - col1: column in df1 to match
+#             - col2: column in df2 to match against
+#             - newCol: column with embeddings
+#             - groupby1: column to group by in df1
+#             - groupby2: column to group by in df2
+#         params: dictionary with keys being the column names and columns to group by
+#         criterion: optional string to filter df2
+#     """
+#     required_params = ["col1", "col2", "newCol", "groupby1", "groupby2"]
+#     for param in params.keys():
+#         if param not in required_params:
+#             raise KeyError(f"Missing required parameter: {param}")
+#     # Group rows by date
+#     grouped_df1 = df1[df1[params["newCol"]].notna()].groupby(params["groupby1"])
+#     if criterion:
+#         grouped_df2 = df2[
+#             (df2[params["newCol"]].notna())
+#             & (df2[params["col2"]].str.contains(criterion))
+#         ].groupby(params["groupby2"])
+#     else:
+#         grouped_df2 = df2[df2[params["newCol"]].notna()].groupby(params["groupby2"])
+
+#     # Iterate over unique dates in df1
+#     for date, group1 in grouped_df1:
+#         # group1 = group1.reset_index(drop=True)
+
+#         if date in grouped_df2.groups:
+#             group2 = grouped_df2.get_group(date)
+#             group2 = group2.reset_index(drop=True)
+
+#             # Compute pairwise cosine similarity between embeddings
+#             similarity_matrix = cosine_similarity(
+#                 np.vstack(group1[params["newCol"]]), np.vstack(group2[params["newCol"]])
+#             )
+#             idx = 0
+#             # Find the best match for each row in group1
+#             for i, row1 in group1.iterrows():
+#                 # best_match_idx = np.argmax(similarity_matrix[i])
+
+#                 sort_indices = np.argsort(similarity_matrix[idx])[::-1]
+#                 best_match = group2.iloc[sort_indices[0]]
+#                 similarity_score = similarity_matrix[idx][sort_indices[0]]
+#                 df1.at[i, "matchedLabel1"] = best_match[params["col2"]]
+#                 df1.at[i, "similarity_score1"] = similarity_score
+
+#                 df1.at[i, "matchedLabelFuzzy"] = fuzzy_match(
+#                     row1[params["col1"]],
+#                     choices=group2[params["col2"]].unique(),
+#                     scorer=fuzz.WRatio,
+#                     processor=preprocess,
+#                 )
+
+#                 # Second-best match (if it exists)
+#                 if len(sort_indices) > 1:
+#                     second_best_match = group2.iloc[sort_indices[1]]
+#                     df1.at[i, "matchedLabel2"] = second_best_match[params["col2"]]
+#                     df1.at[i, "similarity_score2"] = similarity_matrix[idx][
+#                         sort_indices[1]
+#                     ]
+#                 idx += 1
+
+
 def match_labels_df(
     df1: pd.DataFrame,
     df2: pd.DataFrame,
     params: dict[str, Any],
     criterion: str | None = None,
+    matching_func: Callable[
+        [np.ndarray],
+        tuple[list[int], list[int], list[int], list[int], list[int], list[int]],
+    ] = find_best_pairings_one_by_one,
 ) -> None:
-    """Matching names in columns of DataFrames (by default the result is stored in the column matchedLabel)
+    """
+    Matching labels in columns of DataFrames using Pandas. The matching is based on cosine similarity and is stored in `matchedLabel`.
+    Intermediate labels are there for customization of the matching. 
     Args:
         df1 : DataFrame with labels to match
         df2 : DataFrame with labels to match against
@@ -198,78 +279,12 @@ def match_labels_df(
             - groupby2: column to group by in df2
         params: dictionary with keys being the column names and columns to group by
         criterion: optional string to filter df2
-    """
-    required_params = ["col1", "col2", "newCol", "groupby1", "groupby2"]
-    for param in params.keys():
-        if param not in required_params:
-            raise KeyError(f"Missing required parameter: {param}")
-    # Group rows by date
-    grouped_df1 = df1[df1[params["newCol"]].notna()].groupby(params["groupby1"])
-    if criterion:
-        grouped_df2 = df2[
-            (df2[params["newCol"]].notna())
-            & (df2[params["col2"]].str.contains(criterion))
-        ].groupby(params["groupby2"])
-    else:
-        grouped_df2 = df2[df2[params["newCol"]].notna()].groupby(params["groupby2"])
+        matching_func: function that pair the labels in both group and associated similarity scores
+    
+    TODO: Assess performance with well-chosen tests in tests/.
+    TODO: Integrate ChromaDB in order to decouple processing and database logics.
 
-    # Iterate over unique dates in df1
-    for date, group1 in grouped_df1:
-        # group1 = group1.reset_index(drop=True)
-
-        if date in grouped_df2.groups:
-            group2 = grouped_df2.get_group(date)
-            group2 = group2.reset_index(drop=True)
-
-            # Compute pairwise cosine similarity between embeddings
-            similarity_matrix = cosine_similarity(
-                np.vstack(group1[params["newCol"]]), np.vstack(group2[params["newCol"]])
-            )
-            idx = 0
-            # Find the best match for each row in group1
-            for i, row1 in group1.iterrows():
-                # best_match_idx = np.argmax(similarity_matrix[i])
-
-                sort_indices = np.argsort(similarity_matrix[idx])[::-1]
-                best_match = group2.iloc[sort_indices[0]]
-                similarity_score = similarity_matrix[idx][sort_indices[0]]
-                df1.at[i, "matchedLabel1"] = best_match[params["col2"]]
-                df1.at[i, "similarity_score1"] = similarity_score
-
-                df1.at[i, "matchedLabelFuzzy"] = fuzzy_match(
-                    row1[params["col1"]],
-                    choices=group2[params["col2"]].unique(),
-                    scorer=fuzz.WRatio,
-                    processor=preprocess,
-                )
-
-                # Second-best match (if it exists)
-                if len(sort_indices) > 1:
-                    second_best_match = group2.iloc[sort_indices[1]]
-                    df1.at[i, "matchedLabel2"] = second_best_match[params["col2"]]
-                    df1.at[i, "similarity_score2"] = similarity_matrix[idx][
-                        sort_indices[1]
-                    ]
-                idx += 1
-
-
-def match_labels_df_vectorized(
-    df1: pd.DataFrame,
-    df2: pd.DataFrame,
-    params: dict[str, Any],
-    criterion: str | None = None,
-    matching_func: Callable[
-        [np.ndarray],
-        tuple[list[int], list[int], list[int], list[int], list[int], list[int]],
-    ] = find_best_pairings_one_by_one,
-) -> None:
-    """
-    Vectorized version of matching names in columns of DataFrames.
-    Matches labels using cosine similarity and stores results in `matchedLabel`.
-
-    TODO: Cache for already known cosine similarity value
-
-    Note: We discard batch computation (torch) for simplicity.
+    Note: We discard batch cosine similarity computation (torch) for simplicity.
     """
     required_params = ["col1", "col2", "newCol", "groupby1", "groupby2"]
     if not all(param in params for param in required_params):
@@ -354,29 +369,15 @@ def last_mode(row):
         return modes.iloc[0]
 
 
-def input_from_csv(
-    df: pd.DataFrame,
-    filepath: str,
-    column_name: str,
-):
-    """
-    Input categories from external csv
-    """
-    input_df = pd.read_csv(filepath)
-    if isinstance(column_name, str):
-        merged_df = pd.merge(
-            df, input_df, on=column_name, how="left", suffixes=("_original", "_imputed")
-        )
-    else:
-        raise ValueError("column_name should be a string")
-    return merged_df
-
-
 def join_on_dates_and_match(
     df1: pd.DataFrame, df2: pd.DataFrame, keys: dict[str, Any]
 ) -> pd.DataFrame:
     """
     Join two DataFrames on their index (date) and match labels.
+    Args:
+        df1: first dataframe (the bigger one)
+        df2: second dataframe
+        keys: the keys for date
     """
     required_params = ["col1", "col2", "date1", "date2"]
     for param in keys.keys():
@@ -393,10 +394,54 @@ def join_on_dates_and_match(
 
     return merged
 
+def matching_label_confidence(df_loyalty: pd.DataFrame, threshold: float) -> None:
+    """
+    Compute the final matched label based on the candidates labels and their similarity scores with the queries
+    :param df_loyalty
+    :param threshold
+    """
+    mask = df_loyalty.similarity_score1 > threshold
+
+    df_loyalty.loc[mask, "matchedLabel"] = df_loyalty.loc[mask, "matchedLabel1"]
+    # TODO: Do voting based on whole dataset
+    # Lookup values
+    # Step 1: Group by 'itemLabel' + 'loyaltyOperation' and get value counts for 'matchedLabel1'
+    df_loyalty.loc[df_loyalty["itemLabel"].notna(), "itemLabelOperation"] = (
+        df_loyalty.loc[df_loyalty["itemLabel"].notna(), "itemLabel"]
+        + df_loyalty.loc[df_loyalty["itemLabel"].notna(), "loyaltyOperation"]
+    )
+    most_frequent_associations = (
+        df_loyalty.groupby("itemLabelOperation")["matchedLabel1"]
+        .apply(
+            lambda x: x.mode()[0] if not x.value_counts().empty and (x.value_counts() > 1).any() else None
+        )  # Get the most frequent value (mode)
+        .reset_index()
+    )
+
+    # Rename columns for clarity
+    most_frequent_associations.columns = [
+        "itemLabelOperation",
+        "mostFrequentMatchedLabel1",
+    ]
+    df_loyalty = df_loyalty.merge(
+        right=most_frequent_associations, how="left", on="itemLabelOperation"
+    )
+
+    mask_inv = df_loyalty.similarity_score1 <= threshold
+    df_loyalty.loc[mask_inv, "matchedLabel"] = df_loyalty.loc[
+        mask_inv,
+        [
+            "matchedLabel1",
+            "matchedLabel2",
+            "mostFrequentMatchedLabel1",
+            "matchedLabelFuzzy",
+        ],
+    ].apply(last_mode, axis=1)
 
 def main_matching(date_extract: str, threshold: float = 0.7):
     """
     Compute the label and match the labels in product list data and loyalty data in order to join both tables.
+    TODO: unclutter constants.
     """
     # df_prod = pd.read_csv(
     #     f"{DATA_DIRECTORY}/{date_extract}-carrefour_prods.csv", parse_dates=["dateKey"]
@@ -519,7 +564,7 @@ def main_matching(date_extract: str, threshold: float = 0.7):
     # embedding_to_df(model, df_prod, params["col2"])
     embedding_batch_unique_to_df(model, df_prod, params["col2"], **alibaba_opts)
 
-    match_labels_df_vectorized(
+    match_labels_df(
         df_loyalty,
         df_prod,
         params,
@@ -527,43 +572,7 @@ def main_matching(date_extract: str, threshold: float = 0.7):
         matching_func=find_maximum_similarity_matching,
     )  # ensure one on one correspondence
 
-    mask = df_loyalty.similarity_score1 > threshold
-
-    df_loyalty.loc[mask, "matchedLabel"] = df_loyalty.loc[mask, "matchedLabel1"]
-    # TODO: Do voting based on whole dataset
-    # Lookup values
-    # Step 1: Group by 'itemLabel' + 'loyaltyOperation' and get value counts for 'matchedLabel1'
-    df_loyalty.loc[df_loyalty["itemLabel"].notna(), "itemLabelOperation"] = (
-        df_loyalty.loc[df_loyalty["itemLabel"].notna(), "itemLabel"]
-        + df_loyalty.loc[df_loyalty["itemLabel"].notna(), "loyaltyOperation"]
-    )
-    most_frequent_associations = (
-        df_loyalty.groupby("itemLabelOperation")["matchedLabel1"]
-        .apply(
-            lambda x: x.mode()[0] if not x.value_counts().empty and (x.value_counts() > 1).any() else None
-        )  # Get the most frequent value (mode)
-        .reset_index()
-    )
-
-    # Rename columns for clarity
-    most_frequent_associations.columns = [
-        "itemLabelOperation",
-        "mostFrequentMatchedLabel1",
-    ]
-    df_loyalty = df_loyalty.merge(
-        right=most_frequent_associations, how="left", on="itemLabelOperation"
-    )
-
-    mask_inv = df_loyalty.similarity_score1 <= threshold
-    df_loyalty.loc[mask_inv, "matchedLabel"] = df_loyalty.loc[
-        mask_inv,
-        [
-            "matchedLabel1",
-            "matchedLabel2",
-            "mostFrequentMatchedLabel1",
-            "matchedLabelFuzzy",
-        ],
-    ].apply(last_mode, axis=1)
+    matching_label_confidence(df_loyalty, threshold=threshold)
     filepath = f"{DATA_DIRECTORY}/{date_extract}-carrefour_loyalty_extended.csv"
     df_loyalty.to_csv(filepath, index=False)
     logger.info(f"Saved loyalty data with associated product label to {filepath}")
@@ -572,16 +581,24 @@ def main_matching(date_extract: str, threshold: float = 0.7):
 def main_merging(date_extract: str):
     """
     Merge product prices and loyalty data in order to get the totalTruePrice for each purchased product
-    Needs also categorization
+    Needs categorization prior to merging in order to reconstruct the exact loyalty discount.
+    TODO: Find the right name for such process.
     """
-    df_prod = pd.read_csv(
-        f"{DATA_DIRECTORY}/{date_extract}-carrefour_products.csv",
-        parse_dates=["dateKey"],
-    )
-    df_loyalty = pd.read_csv(
-        f"{DATA_DIRECTORY}/{date_extract}-carrefour_loyalty_extended.csv",
-        parse_dates=["date"],
-    )
+    try:
+        df_prod = pd.read_csv(
+            f"{DATA_DIRECTORY}/{date_extract}-carrefour_products.csv",
+            parse_dates=["dateKey"],
+        )
+    except pd.errors.EmptyDataError:
+        logger.warning(f"{DATA_DIRECTORY}/{date_extract}-carrefour_products.csv is Empty ")   
+    try:
+        df_loyalty = pd.read_csv(
+                f"{DATA_DIRECTORY}/{date_extract}-carrefour_loyalty_extended.csv",
+                parse_dates=["date"],
+            )
+    except pd.errors.EmptyDataError :
+        logger.warning(f"{DATA_DIRECTORY}/{date_extract}-carrefour_loyalty_extended.csv is Empty ")   
+    
 
     df_loyalty_amounts = df_loyalty[["date", "itemLabel", "itemRd", "matchedLabel"]]
 

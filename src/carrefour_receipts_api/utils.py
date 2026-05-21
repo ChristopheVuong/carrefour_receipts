@@ -205,6 +205,26 @@ def find_maximum_similarity_matching(similarity_matrix):
 
     )
 
+def input_from_csv(
+    df: pd.DataFrame,
+    filepath: str,
+    column_name: str,
+):
+    """
+    Input categories from external csv in `column_name`.
+    Args:
+        df: the dataframe where to input
+        filepath: the path to the file containing data to input
+        column_name: the column_name for input
+    """
+    input_df = pd.read_csv(filepath)
+    if isinstance(column_name, str):
+        merged_df = pd.merge(
+            df, input_df, on=column_name, how="left", suffixes=("_original", "_imputed")
+        )
+    else:
+        raise ValueError("column_name should be a string")
+    return merged_df
 
 def display_amounts_month(
     df,

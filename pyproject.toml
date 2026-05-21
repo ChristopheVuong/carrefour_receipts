@@ -17,14 +17,16 @@ requests = "*"  # Added dependency for handling HTTP requests
 numpy = "^1.23.0"  # Numerical operations library
 pandas = "^1.5.0"  # Pandas dependency (any version compatible with 1.5.0)
 selenium = "*" # Selenium for web scraping (if needed)
-playwright = "*" # For browser automation (scraping)
+seleniumbase = "^4.21.0" # Seleniumbase in order to bypass Cloudfare turnstile
+playwright = "*" # For browser automation (scraping) # to remove later
 pyyaml = "^6.0.0"  # YAML parsing library
 pymongo = "^4.5.0"  # MongoDB driver for Python
 rapidfuzz = "^2.0.0"  # Fast fuzzy string matching library
 seaborn = "^0.12.0"  # Data visualization library based on matplotlib
 scikit-learn = "^1.6.1"
-transformers = "^4.30.0"  # Required by sentence-transformers
-sentence-transformers = "^2.2.0" # use conda or other for pytorch installation (known issue with pytorch wheel)
+# transformers = "^4.30.0"  # Required by sentence-transformers (conda or other dependency manager
+# sentence-transformers = "^2.2.0" # use conda or other for pytorch installation (known issue with pytorch wheel)
+# leave the torch dependency issue in poetry command output
 # python-slugify = "." # to include automatically in Poetry lock
 # greenlet = "." 
 # Beware it might be difficult to handle dependencies with playwright

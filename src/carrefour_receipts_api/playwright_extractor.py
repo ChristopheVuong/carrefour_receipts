@@ -1,5 +1,6 @@
 """
 DEPRECATED: Use user_api_extractor instead.
+TODO: Use SeleniumBase and type instead of filling from playwright
 """
 
 import asyncio
@@ -7,7 +8,7 @@ from http.cookiejar import CookieJar, Cookie
 import logging
 import random
 import time
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 from urllib3.util.retry import Retry
 from urllib.parse import urlencode
 
@@ -111,7 +112,7 @@ class NetworkScraper:
         url: str,
         params: Dict[str, Any],
         headers: Dict[str, Any],
-        proxies_list: Optional[List[str]] = None,
+        proxies_list: Optional[list[str]] = None,
     ) -> httpx.Response:
         """
         Fetch data from an API with robust error handling, retry logic, and proxy support using HTTPX.
@@ -457,8 +458,8 @@ class WebScraper:
         url: str,
         params: Dict[str, Any],
         headers: Dict[str, Any],
-        cookies: List[dict],
-        proxies_list: Optional[List[str]] = None,
+        cookies: list[dict],
+        proxies_list: Optional[list[str]] = None,
     ) -> requests.Response:
         """
         Fetch data from an API with robust error handling, retry logic, and proxy support.
@@ -521,9 +522,9 @@ class WebScraper:
         url: str,
         common_params: Dict[str, Any],
         headers: Dict[str, Any],
-        cookies: List[dict],
+        cookies: list[dict],
         max_scrolls: int = 10,
-        proxies_list: Optional[List[str]] = None,
+        proxies_list: Optional[list[str]] = None,
     ) -> Dict[str, Any]:
         """
         Fetch all data by scrolling from url to url.
@@ -563,7 +564,7 @@ class WebScraper:
         params: Dict[str, Any],
         headers: Dict[str, Any],
         cookies: httpx.Cookies,
-        proxies_list: Optional[List[str]] = None,
+        proxies_list: Optional[list[str]] = None,
     ) -> httpx.Response:
         """
         Fetch data from an API with robust error handling, retry logic, and proxy support using HTTPX.

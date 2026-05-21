@@ -1,6 +1,7 @@
 """
 Test cases for the CarrefourUserAPIHandler's fetch_data method with different arguments.
 Note: Those tests are there to detect any API key changes.
+TODO: test SeleniumBase
 """
 
 from datetime import datetime, timedelta

@@ -86,6 +86,16 @@ This copies all the required cookies so your curl can be 'authenticated'. In tha
 
 The curl must be run on the same IP as you were loading the site with.
 
+#### Attempt 3: Log in using SeleniumBase
+
+See numerous examples including `raw_turnstile.py`, `raw_login_driver.py` and `uc_mode`.
+https://github.com/seleniumbase/SeleniumBase/tree/master/examples
+
+Advantage: This can be integrated in pytest tests.
+
+Comparaison
+https://github.com/seleniumbase/SeleniumBase/issues/3166
+
 ### **3. API Scraping**  
 - **Rate limiting**:  
   - Use exponential backoff + jitter for failed requests.  
@@ -106,6 +116,8 @@ The curl must be run on the same IP as you were loading the site with.
 ---
 
 ### **4. Data Storage & Pipelines (ETL)**
+
+USE AIRFLOW.
 
 #### **Database Design**  
 - **Storage strategy**:
@@ -223,6 +235,14 @@ Below is a breakdown of the key test types:
    - Inventory for hygiene and beauty (total quantity based on number of purchases of a selection of products by month or year): use rolling aggregation to get a better grasp of the evolution of number of items and then the actual consumption patterns.
    - How many liquid detergent containers per year? How many liters?
 
+#### NLP for semantic similarity and categorization 
+
+How QWEN outperforms Bert, Roberta? 
+
+See https://qwenlm.github.io/blog/qwen3-embedding/. 
+
+The embedding is extracted by hidden state vector corresponding to the final [EOS] token.
+
 #### **Streamlit App (or Dash app)**  
 - **Features**:  
   - Interactive filters (year/month/category) and drag-and-drop.  
@@ -276,7 +296,7 @@ pytest --cov=carrefour_receipts_api
 - **Less Pandas**: Defer most of Pandas processing in MongoDB except complex matching labels (better prepare the dataframes). Store vector embeddings in MongoDB (create a new collection) and do most processing there.
 - Scale ETL pipeline with Apache Airflow Python, with more elaborate extraction than simple MongoDB insertion (not that complex).
 - **Advanced NLP**: Use transfer learning of categorization of big brand databases (e.g. Wallmart) and NLP techniques to categorize unstructured product names based on a sample of already categorized items from the Drive orders. The categories may be easier to find for non-food items. There are already there for purchased items in Drive orders (and more generally online purchases) but the item labels in store are more difficult to categorize (non-obvious matching of labels with ordered products). Store categories in MongoDB new collection and perform join operations (`$lookup` in query).
-- **What about LangChain OpenAI?** : Does not need complex orchestration for that type of tasks.
+- **What about LangChain OpenAI?** : Does not need complex orchestration for that type of tasks. What kind or orchestrations? Semantic search, categorization, chatbot for Carrefour clients based on their profile (individual only for now)
 - **Modification of schema**: Find a better representation of the documents so that querying does not rely on dynamic fields. 
 <!-- - **Real-time dashboards**: Integrate Kafka for live data streaming.   -->
 - **Optimization of database accesses**: Find a better calendar for database access and work on how many updates one want to accurately monitor the KPIs.
@@ -292,16 +312,21 @@ pytest --cov=carrefour_receipts_api
 
 ## Resources
 
+### Dependency management
+
+https://www.loopwerk.io/articles/2024/python-poetry-vs-uv/
+
 ### Scraping
 
 - https://medium.com/@anisa.maharani/scraping-with-python-requests-aca585c17263
 - https://www.zenrows.com/blog/bypass-cloudflare#how-cloudflare-detects-bots
 - https://stackoverflow.com/questions/68289474/selenium-headless-how-to-bypass-cloudflare-detection-using-selenium
-- https://openclassrooms.com/forum/sujet/api-carrefour
+- https://scrapfly.io/blog/posts/how-to-bypass-cloudflare-anti-scraping
 
 - https://www.zenrows.com/blog/bypass-cloudflare#fortified-headless-browsers
 - https://scrapfly.io/blog/how-to-bypass-cloudflare-anti-scraping/
 - https://www.zenrows.com/blog/curl-bypass-cloudflare#using-cookies
+- https://github.com/seleniumbase/SeleniumBase/tree/master/examples
 
 ### Captcha
 
