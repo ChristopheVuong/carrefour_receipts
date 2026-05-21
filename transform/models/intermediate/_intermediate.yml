@@ -1,0 +1,14 @@
+version: 2
+
+models:
+  - name: int_loyalty_matched
+    description: >
+      Fidélité fuzzy-join: each loyalty line matched to the most similar receipt
+      product label on the same day (DuckDB jaro_winkler_similarity).
+    columns:
+      - name: loyalty_line_id
+        description: "Unique key — one row per loyalty line is preserved by the join."
+        tests: [not_null, unique]
+      - name: match_similarity
+        description: "Best jaro-winkler similarity in [0, 1] (0 when no same-day receipt)."
+        tests: [not_null]

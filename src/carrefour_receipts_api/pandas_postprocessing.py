@@ -531,21 +531,14 @@ def main_matching(date_extract: str, threshold: float = 0.7):
         f"{DATA_DIRECTORY}/{date_extract}-carrefour_loyalty.csv", parse_dates=["date"]
     )
 
-    # Load a pre-trained Sentence Transformer model (lazy import: optional `ml` extra)
-    from sentence_transformers import SentenceTransformer
+    # Load the fastembed encoder (lazy import: optional `ml` extra, ONNX/no torch).
+    from carrefour_receipts_api.embeddings import load_encoder
 
-    # model = SentenceTransformer("all-MiniLM-L6-v2")
     logger.info("Loading of the encoder model in order to compute embeddings.")
-    # model = SentenceTransformer("all-distilroberta-v1")
-    model = SentenceTransformer(
-        "Alibaba-NLP/gte-multilingual-base", trust_remote_code=True
-    )
-    # options for encoder
-    alibaba_opts = {
-        "normalize_embeddings": True,
-        "return_dense": True,
-        "return_sparse": True,
-    }
+    model = load_encoder()
+    # Kept for call-site compatibility; the fastembed adapter ignores these
+    # sentence-transformers-only options (vectors are already normalized).
+    alibaba_opts: dict[str, bool] = {}
     params = {
         "col1": "itemLabel",
         "col2": "productLabel",

@@ -19,3 +19,9 @@ sources:
         description: "Payment splits (card, loyalty wallet, ...) per receipt."
       - name: receipts__attributes__products__coupon
         description: "Coupons applied on the receipt."
+      - name: loyalty
+        description: "Loyalty (fidélité) line items loaded by dlt from the CSV snapshot."
+        columns:
+          - name: _dlt_id
+            description: "dlt-generated stable surrogate key for the loyalty line."
+            tests: [not_null, unique]

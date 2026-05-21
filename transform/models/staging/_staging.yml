@@ -1,0 +1,12 @@
+version: 2
+
+models:
+  - name: stg_loyalty
+    description: "Cleaned loyalty (fidélité) line items, one row per loyalty line."
+    columns:
+      - name: loyalty_line_id
+        description: "Stable unique key (dlt surrogate) for the loyalty line."
+        tests: [not_null, unique]
+      - name: loyalty_date
+        description: "Date the loyalty operation was recorded."
+        tests: [not_null]

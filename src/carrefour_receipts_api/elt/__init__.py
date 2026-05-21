@@ -7,6 +7,6 @@ performs idempotent ``merge`` loads keyed on the receipt ``id`` — so re-runnin
 the loader never produces duplicates. Transformation then happens in dbt (SQL).
 """
 
-from carrefour_receipts_api.elt.load import load_receipts
+from carrefour_receipts_api.elt.load import load_all, load_loyalty, load_receipts
 
-__all__ = ["load_receipts"]
+__all__ = ["load_all", "load_loyalty", "load_receipts"]

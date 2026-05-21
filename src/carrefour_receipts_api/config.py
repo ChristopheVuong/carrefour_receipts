@@ -32,7 +32,9 @@ SECRETS_FILE: str = _get("SECRETS_FILE", f"{DATA_DIRECTORY}/secrets.yml")
 DUCKDB_PATH: str = _get("DUCKDB_PATH", "carrefour.duckdb")
 DUCKDB_DATASET: str = _get("DUCKDB_DATASET", "raw")
 RECEIPTS_SOURCE_DIR: str = _get("RECEIPTS_SOURCE_DIR", "tests/fixtures/receipts")
+LOYALTY_SOURCE_CSV: str = _get("LOYALTY_SOURCE_CSV", "tests/fixtures/loyalty/loyalty.csv")
 
-# --- Legacy MongoDB path ----------------------------------------------------
-MONGO_CONNECTION_STRING: str = _get("MONGO_CONNECTION_STRING", "mongodb://localhost:27017/")
-MONGO_DB_NAME: str = _get("MONGO_DB_NAME", "carrefour")
+# Minimum similarity (0..1) for a loyalty item label to be accepted as a match
+# against a receipt product label in the fidélité one-to-one join (dbt Python
+# model int_loyalty_matched). Env-driven so the dbt run can read it.
+FIDELITY_MATCH_THRESHOLD: float = float(_get("FIDELITY_MATCH_THRESHOLD", "0.85"))

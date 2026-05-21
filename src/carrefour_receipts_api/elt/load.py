@@ -1,19 +1,29 @@
-"""Load raw Carrefour receipt JSON into DuckDB with dlt.
+"""Load raw Carrefour data (receipts + loyalty) into DuckDB with dlt.
 
 Usage (CLI):
     python -m carrefour_receipts_api.elt.load \
-        --source tests/fixtures/receipts \
+        --source data/20250613 \
+        --loyalty data/20250601-carrefour_loyalty.csv \
         --db carrefour.duckdb \
         --dataset raw
 
-The loader is idempotent: rows are merged on the receipt ``id`` primary key, so
-loading the same files twice does not create duplicates. Nested arrays are
-unnested by dlt into child tables (e.g. ``receipts__attributes__products__product``).
+Two resources feed the ``raw`` dataset:
+  - ``receipts``: one document per in-store receipt (JSON). Merged on the receipt
+    ``id`` primary key, so re-loading the same files never creates duplicates.
+    dlt unnests nested arrays into child tables
+    (e.g. ``receipts__attributes__products__product``).
+  - ``loyalty``: one row per loyalty line item (CSV snapshot). Loaded with a
+    ``replace`` disposition — the CSV is a full snapshot, so replacing the table
+    is the idempotent choice.
+
+The transformation (cleaning, the fidélité fuzzy-join, the star schema) then
+happens in dbt (see ``transform/``).
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import logging
 from collections.abc import Iterator
@@ -27,7 +37,11 @@ from carrefour_receipts_api import config
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
+# Loyalty CSV columns that hold numeric amounts (coerced from str -> float|None).
+_LOYALTY_NUMERIC = ("earned", "burned", "itemRd")
 
+
+# --- Receipts ----------------------------------------------------------------
 def iter_receipt_files(source_dir: str | Path) -> Iterator[dict[str, Any]]:
     """Yield each receipt-detail JSON document found under ``source_dir``.
 
@@ -59,6 +73,61 @@ def receipts_resource(source_dir: str | Path) -> Iterator[dict[str, Any]]:
     yield from iter_receipt_files(source_dir)
 
 
+# --- Loyalty -----------------------------------------------------------------
+def _to_float(value: str | None) -> float | None:
+    """Parse a loyalty amount; blank/invalid cells become ``None``."""
+    if value is None or value.strip() == "":
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
+def iter_loyalty_rows(csv_path: str | Path) -> Iterator[dict[str, Any]]:
+    """Yield each loyalty line item from the snapshot CSV, with amounts coerced."""
+    path = Path(csv_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Loyalty CSV not found: {path}")
+
+    count = 0
+    with path.open(newline="", encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            for field in _LOYALTY_NUMERIC:
+                if field in row:
+                    row[field] = _to_float(row[field])
+            count += 1
+            yield row
+    logger.info("Yielded %d loyalty rows from %s", count, path)
+
+
+@dlt.resource(name="loyalty", write_disposition="replace")
+def loyalty_resource(csv_path: str | Path) -> Iterator[dict[str, Any]]:
+    """dlt resource streaming loyalty line items (full-snapshot replace)."""
+    yield from iter_loyalty_rows(csv_path)
+
+
+# --- Pipeline ----------------------------------------------------------------
+def _pipeline(db_path: str, dataset: str, pipelines_dir: str | Path | None):
+    extra: dict[str, Any] = {}
+    if pipelines_dir is not None:
+        extra["pipelines_dir"] = str(pipelines_dir)
+    return dlt.pipeline(
+        pipeline_name="carrefour",
+        destination=dlt.destinations.duckdb(db_path),
+        dataset_name=dataset,
+        **extra,
+    )
+
+
+def _row_counts(pipeline) -> dict[str, Any]:
+    return {
+        name: metrics
+        for name, metrics in (pipeline.last_trace.last_normalize_info.row_counts or {}).items()
+        if not name.startswith("_dlt")
+    }
+
+
 def load_receipts(
     source_dir: str | Path | None = None,
     db_path: str | None = None,
@@ -67,46 +136,84 @@ def load_receipts(
 ) -> dict[str, Any]:
     """Run the dlt pipeline loading receipts from ``source_dir`` into DuckDB.
 
-    Args:
-        source_dir: directory of receipt JSON files.
-        db_path: path to the target DuckDB file.
-        dataset: target DuckDB schema name.
-        pipelines_dir: optional dlt working/state directory (use a temp dir to
-            keep test runs hermetic and independent of ``~/.dlt``).
-
-    Returns a small summary dict (rows loaded) for logging/testing.
-
     Defaults fall back to values from the environment / ``.env`` (see config).
+    Returns a small summary dict (rows loaded) for logging/testing.
     """
     source_dir = source_dir if source_dir is not None else config.RECEIPTS_SOURCE_DIR
     db_path = db_path if db_path is not None else config.DUCKDB_PATH
     dataset = dataset if dataset is not None else config.DUCKDB_DATASET
 
-    extra: dict[str, Any] = {}
-    if pipelines_dir is not None:
-        extra["pipelines_dir"] = str(pipelines_dir)
-    pipeline = dlt.pipeline(
-        pipeline_name="carrefour",
-        destination=dlt.destinations.duckdb(db_path),
-        dataset_name=dataset,
-        **extra,
-    )
+    pipeline = _pipeline(db_path, dataset, pipelines_dir)
     info = pipeline.run(receipts_resource(source_dir))
-    logger.info("Load complete -> %s (dataset=%s)", db_path, dataset)
-    row_counts = {
-        name: metrics
-        for name, metrics in (pipeline.last_trace.last_normalize_info.row_counts or {}).items()
-        if not name.startswith("_dlt")
+    logger.info("Receipts load complete -> %s (dataset=%s)", db_path, dataset)
+    return {
+        "db_path": db_path,
+        "dataset": dataset,
+        "row_counts": _row_counts(pipeline),
+        "info": str(info),
     }
-    return {"db_path": db_path, "dataset": dataset, "row_counts": row_counts, "info": str(info)}
+
+
+def load_loyalty(
+    csv_path: str | Path | None = None,
+    db_path: str | None = None,
+    dataset: str | None = None,
+    pipelines_dir: str | Path | None = None,
+) -> dict[str, Any]:
+    """Run the dlt pipeline loading the loyalty CSV snapshot into DuckDB."""
+    csv_path = csv_path if csv_path is not None else config.LOYALTY_SOURCE_CSV
+    db_path = db_path if db_path is not None else config.DUCKDB_PATH
+    dataset = dataset if dataset is not None else config.DUCKDB_DATASET
+
+    pipeline = _pipeline(db_path, dataset, pipelines_dir)
+    info = pipeline.run(loyalty_resource(csv_path))
+    logger.info("Loyalty load complete -> %s (dataset=%s)", db_path, dataset)
+    return {
+        "db_path": db_path,
+        "dataset": dataset,
+        "row_counts": _row_counts(pipeline),
+        "info": str(info),
+    }
+
+
+def load_all(
+    source_dir: str | Path | None = None,
+    loyalty_csv: str | Path | None = None,
+    db_path: str | None = None,
+    dataset: str | None = None,
+    pipelines_dir: str | Path | None = None,
+) -> dict[str, Any]:
+    """Load both receipts and loyalty into the same ``raw`` dataset (one pipeline run)."""
+    source_dir = source_dir if source_dir is not None else config.RECEIPTS_SOURCE_DIR
+    loyalty_csv = loyalty_csv if loyalty_csv is not None else config.LOYALTY_SOURCE_CSV
+    db_path = db_path if db_path is not None else config.DUCKDB_PATH
+    dataset = dataset if dataset is not None else config.DUCKDB_DATASET
+
+    pipeline = _pipeline(db_path, dataset, pipelines_dir)
+    info = pipeline.run([receipts_resource(source_dir), loyalty_resource(loyalty_csv)])
+    logger.info("Full load complete -> %s (dataset=%s)", db_path, dataset)
+    return {
+        "db_path": db_path,
+        "dataset": dataset,
+        "row_counts": _row_counts(pipeline),
+        "info": str(info),
+    }
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Load Carrefour receipt JSON into DuckDB via dlt.")
+    parser = argparse.ArgumentParser(description="Load Carrefour data into DuckDB via dlt.")
     parser.add_argument(
         "--source",
         default=None,
         help="Directory of receipt JSON files (default: env RECEIPTS_SOURCE_DIR).",
+    )
+    parser.add_argument(
+        "--loyalty",
+        default=None,
+        help="Loyalty CSV snapshot (default: env LOYALTY_SOURCE_CSV).",
+    )
+    parser.add_argument(
+        "--no-loyalty", action="store_true", help="Load receipts only (skip loyalty)."
     )
     parser.add_argument(
         "--db", default=None, help="Path to the DuckDB database file (default: env DUCKDB_PATH)."
@@ -121,5 +228,13 @@ def _parse_args() -> argparse.Namespace:
 
 if __name__ == "__main__":
     args = _parse_args()
-    summary = load_receipts(source_dir=args.source, db_path=args.db, dataset=args.dataset)
+    if args.no_loyalty:
+        summary = load_receipts(source_dir=args.source, db_path=args.db, dataset=args.dataset)
+    else:
+        summary = load_all(
+            source_dir=args.source,
+            loyalty_csv=args.loyalty,
+            db_path=args.db,
+            dataset=args.dataset,
+        )
     logger.info("Row counts: %s", summary["row_counts"])

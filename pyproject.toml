@@ -5,7 +5,7 @@ description = "Extract, model and analyze personal Carrefour receipts (modern da
 authors = [{ name = "Christophe Vuong", email = "christophe.vuong108@gmail.com" }]
 license = { text = "MIT" }
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 keywords = ["retail", "shopping", "e-commerce", "analytics", "finance"]
 
 # Core runtime: extraction + tabular analysis. Kept deliberately light so CI
@@ -27,18 +27,18 @@ elt = [
     "duckdb>=1.1",
     "dbt-duckdb>=1.9",
 ]
-# Classic pandas/sklearn analysis + legacy MongoDB path.
+# Pandas/sklearn analysis + the fidélité one-to-one match (rapidfuzz + scipy).
 analysis = [
     "scikit-learn>=1.4",
     "scipy>=1.11",
     "rapidfuzz>=3.0",
     "matplotlib>=3.8",
     "seaborn>=0.13",
-    "pymongo>=4.6",
 ]
-# Semantic label matching (pulls torch transitively — keep isolated).
+# Semantic label matching via fastembed (ONNX Runtime — no torch, so it installs
+# on macOS x86_64/Intel where recent torch has no wheels).
 ml = [
-    "sentence-transformers>=3.0",
+    "fastembed>=0.4",
 ]
 # Browser-driven authentication / scraping fallbacks.
 scraping = [
@@ -64,6 +64,15 @@ Repository = "https://github.com/ChristopheVuong/carrefour_receipts"
 Documentation = "https://github.com/ChristopheVuong/carrefour_receipts/blob/main/README.md"
 "Bug Tracker" = "https://github.com/ChristopheVuong/carrefour_receipts/issues"
 
+[tool.uv]
+# onnxruntime (pulled by fastembed, the `ml` extra) only ships macOS x86_64/Intel
+# wheels up to 1.23.x; 1.24+ is arm64/Linux/Windows only. Constrain it *just* on
+# Intel Macs so the `ml` extra stays installable there — Linux/Apple-Silicon keep
+# the latest. fastembed needs onnxruntime>1.21, so this resolves to 1.23.2.
+constraint-dependencies = [
+    "onnxruntime<1.24; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -81,7 +90,7 @@ markers = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py313"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
@@ -90,6 +99,6 @@ select = ["E", "F", "I", "UP", "B"]
 ignore = ["E501"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.13"
 ignore_missing_imports = true
 files = ["src/carrefour_receipts_api"]

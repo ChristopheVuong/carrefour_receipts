@@ -9,7 +9,7 @@ tags: []
 Analysis of own Carrefour receipts.
 
 <p align="center">
-    <a href=""><img src="https://img.shields.io/badge/python-3.7+-aff.svg"></a>
+    <a href=""><img src="https://img.shields.io/badge/python-3.13-aff.svg"></a>
     <a href=""><img src="https://img.shields.io/badge/os-linux%2C%20win%2C%20mac-pink.svg"></a>
 </p>
 
@@ -40,15 +40,29 @@ make lint typecheck test        # ruff + mypy + pytest (offline, no live API)
 
 - **Extract-load**: `src/carrefour_receipts_api/elt/load.py` — dlt auto-unnests
   the nested receipt JSON into child tables and merges on the receipt `id`
-  (idempotent re-runs).
-- **Transform**: `transform/` — dbt-duckdb staging + marts (`fct_receipts`,
-  `fct_receipt_lines`, `dim_date`) with schema/data tests.
+  (idempotent re-runs). A second resource loads the loyalty (fidélité) CSV
+  snapshot into `raw.loyalty` (full-snapshot `replace`).
+- **Transform**: `transform/` — dbt-duckdb staging → intermediate → marts:
+  `fct_receipts`, `fct_receipt_lines`, `dim_date`, and the **fidélité join**
+  `fct_loyalty_lines` (via `stg_loyalty` + `int_loyalty_matched`). All with
+  schema/data tests.
+- **Fidélité fuzzy-join**: loyalty item labels are matched to receipt product
+  labels on the same day in **pure SQL** with DuckDB's `jaro_winkler_similarity`
+  (deterministic, CI-safe) — see `int_loyalty_matched`. The optional `ml` extra
+  (`fastembed`, ONNX/no-torch) provides a semantic-embedding path in pandas for
+  exploration.
 - **CI**: `.github/workflows/ci.yml` runs lint/type/test plus the full
   dlt→DuckDB→dbt build on fixtures, with **no** authentication required. Live
   extraction tests (`tests/integration/test_fetch_data.py`) are skipped in CI.
 
-The legacy MongoDB + Pandas modules remain under `src/carrefour_receipts_api/`
-(`mongodb_*`, `pandas_postprocessing*`) for reference during migration.
+MongoDB has been **removed** — the modern stack (dlt → DuckDB → dbt) fully replaces
+it. The fidélité (loyalty) label join is now a **one-to-one** match (Hungarian
+algorithm over rapidfuzz similarity) in the dbt Python model `int_loyalty_matched`.
+The pandas exploratory modules (`pandas_postprocessing*`, `matching`, `embeddings`)
+remain for ad-hoc analysis.
+
+> The design narrative below predates the migration and is kept for historical
+> context; it still describes the original MongoDB-based approach.
 
 ---
 
@@ -81,7 +95,7 @@ KPIs:
   - **Build a Streamlit dashboard for visualization and API endpoint then continuous integration with Dockerhub.** 
 
 - **Tech Stack**:  
-  - Python 3.10+ but Python 3.8+ should be enough.  
+  - Python 3.13 (managed with `uv`; see `.python-version`).  
   - JSON for storage by default (API endpoint), 
   - MongoDB for database and querying (for scalability sake as an existing MongoDB instance can be migrated to GCP and AWS -> use of MongoDB Atlas on GCP for high availability or self-managed MongoDB on Compute Engine or EC2)
   - Pandas for analysis (batch processing). 
@@ -174,31 +188,9 @@ USE AIRFLOW.
 
 #### Database connection
 
-On macOS, for the first time, use Homebrew to install `mongodb-community`. You’ll use the MongoDB Homebrew tap to install and start MongoDB.
-Add the MongoDB Homebrew tap. In the Terminal app, run the following command:
-```bash
-brew tap mongodb/brew
-```
-Install the MongoDB Community Edition:
-```bash
-brew install mongodb-community
-```
-This installs the latest version of MongoDB. To install an older version, specify the version number, for example:
-```
-brew install mongodb-community@6.0
-````
-You have installed MongoDB.
-Then, run:
-
-```bash
-brew services start mongodb-community
-```
-This starts the connection to the database. For sake of simplicity, we employ a local database (e.g. `localhost:27017` as connection string). Most script close the connection but it is recommended to check.
-
-When done, do not forget to run:
-```bash
-brew services stop mongodb-community
-```
+> **Historical.** This step is obsolete: MongoDB has been removed. The pipeline now
+> loads into a local DuckDB file via dlt (no database server to install or run) —
+> see the *Quickstart (modern data stack)* section at the top.
 
    
 #### Querying
@@ -212,7 +204,16 @@ We do not create indexes as it may induce write-heavy workloads while the collec
 
 The more complex operations such as filtering, joining and pivoting table should be deferred to **Pandas**, for example joining loyalty history and receipt details on a dateKey in a non-obvious way (several receipts with the same dateKey).
 
-The next step is to perform fuzzy join using the libraries `rapidfuzz` or `SentenceTransformers` and `pandas` on the product labels in order to merge receipt, order and loyalty data.
+In the modern stack this fidélité join is done in **pure SQL** inside dbt: the
+model `int_loyalty_matched` pairs each loyalty item label with the most similar
+receipt product label purchased the same day, using DuckDB's
+`jaro_winkler_similarity` and a configurable threshold (`vars.fidelity_match_threshold`).
+This is deterministic and runs in CI with no extra dependencies.
+
+For exploratory/semantic matching, `pandas` + `rapidfuzz` (string similarity) or
+`fastembed` (ONNX embeddings — replaces the old `sentence-transformers`/`torch`
+stack, so it installs on Intel macOS) are available via the `analysis` / `ml`
+extras.
 
 For scalable solution, one can consider **FAISS** for indexing of vector embeddings. The indices can be matched to the product labels within a receipt at a given date.
 

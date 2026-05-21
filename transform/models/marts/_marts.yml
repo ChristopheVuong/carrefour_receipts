@@ -36,3 +36,26 @@ models:
                 values: ["food", "other"]
       - name: total_price
         tests: [not_null]
+
+  - name: fct_loyalty_lines
+    description: "One row per loyalty (fidélité) line, one-to-one matched to a receipt product line."
+    columns:
+      - name: loyalty_line_id
+        description: "Unique key for the loyalty line."
+        tests: [not_null, unique]
+      - name: loyalty_date
+        tests: [not_null]
+      - name: matched_line_id
+        description: >
+          Receipt line (stg_receipt_lines.line_dlt_key) this loyalty line is matched
+          to; NULL when unmatched. The `unique` test (NULLs ignored) enforces the
+          one-to-one guarantee: each receipt line is claimed by at most one loyalty line.
+        tests:
+          - unique
+      - name: is_matched
+        description: "Whether the loyalty label matched a receipt product above the threshold."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]

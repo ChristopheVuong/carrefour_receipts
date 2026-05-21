@@ -24,20 +24,20 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
           enable-cache: true
 
       - name: Install dependencies
         run: uv sync --extra elt --extra analysis
 
       - name: Ruff lint (modern stack + tests)
-        run: uv run ruff check src/carrefour_receipts_api/config.py src/carrefour_receipts_api/elt tests
+        run: uv run ruff check src/carrefour_receipts_api/config.py src/carrefour_receipts_api/embeddings.py src/carrefour_receipts_api/matching.py src/carrefour_receipts_api/elt tests
 
       - name: Ruff format check
-        run: uv run ruff format --check src/carrefour_receipts_api/config.py src/carrefour_receipts_api/elt
+        run: uv run ruff format --check src/carrefour_receipts_api/config.py src/carrefour_receipts_api/embeddings.py src/carrefour_receipts_api/matching.py src/carrefour_receipts_api/elt
 
       - name: Mypy
-        run: uv run mypy src/carrefour_receipts_api/config.py src/carrefour_receipts_api/elt
+        run: uv run mypy src/carrefour_receipts_api/config.py src/carrefour_receipts_api/embeddings.py src/carrefour_receipts_api/matching.py src/carrefour_receipts_api/elt
 
       - name: Pytest (unit + offline ELT)
         run: uv run pytest -m "not integration" -q
@@ -55,14 +55,14 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
           enable-cache: true
 
-      - name: Install ELT dependencies
-        run: uv sync --extra elt
+      - name: Install ELT + analysis dependencies (analysis = rapidfuzz/scipy for the Python dbt model)
+        run: uv sync --extra elt --extra analysis
 
-      - name: Load fixtures into DuckDB (dlt)
-        run: uv run python -m carrefour_receipts_api.elt.load --source tests/fixtures/receipts --dataset raw
+      - name: Load fixtures into DuckDB (dlt) — receipts + loyalty
+        run: uv run python -m carrefour_receipts_api.elt.load --source tests/fixtures/receipts --loyalty tests/fixtures/loyalty/loyalty.csv --dataset raw
 
       - name: Build + test dbt models
         working-directory: transform

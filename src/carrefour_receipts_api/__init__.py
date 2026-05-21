@@ -1,11 +1,11 @@
 # src/__init__.py
 """
-src: A Python package for data processing and MongoDB querying.
+carrefour_receipts_api: extract, model and analyze personal Carrefour receipts.
 
 Modules:
-    analysis_utils: Utility functions and classes for analysis.
-    mongodb_builder : Functions for building and managing MongoDB collections like record insertions.
-    mongodb_querying: Functions for querying MongoDB collections.
-    user_api_extractor: Classes in order to fetch data from store API endpoints.
+    elt: dlt extract-load of receipts + loyalty JSON/CSV into DuckDB.
+    matching: label-matching primitives for the fidélité one-to-one join.
+    embeddings: fastembed (ONNX) text encoder for semantic label matching.
+    user_api_extractor: classes to fetch data from the Carrefour API endpoints.
 """
 name = "carrefour_receipts_api"
