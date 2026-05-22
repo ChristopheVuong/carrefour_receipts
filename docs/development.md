@@ -5,9 +5,14 @@
 Tooling is [uv](https://docs.astral.sh/uv/). Python 3.13 (`.python-version`).
 
 ```bash
-uv sync --extra elt --extra analysis     # = make install (dev + ELT + analysis)
+uv sync --extra all                      # = make install (dev + the full local stack)
 cp .env.example .env
+uv run pre-commit install                # wire the git hooks (lint/type on commit, tests on push)
 ```
+
+> Add `--extra scraping` when you need browser extraction / the auth service, and
+> `--extra ml` for the optional semantic embeddings — both are kept out of `all` because
+> they are heavy (selenium/playwright, ONNX). `make install-ml` = `all` + `ml`.
 
 > If a stray `VIRTUAL_ENV` (e.g. a conda env) is active, prefix uv commands with
 > `env -u VIRTUAL_ENV` so uv uses the project venv.
@@ -16,12 +21,17 @@ cp .env.example .env
 
 | Extra | Brings | Needed for |
 | --- | --- | --- |
+| `all` | `elt` + `analysis` + `dashboard` + `api` | the full local stack (one flag; what `make install` uses) |
 | `elt` | dlt, duckdb, dbt-duckdb | the ELT + dbt pipeline |
 | `analysis` | scikit-learn, scipy, rapidfuzz, matplotlib, seaborn | matching, categorization, plots |
-| `ml` | fastembed (ONNX, no torch) | semantic embeddings (optional) |
-| `scraping` | selenium, seleniumbase, playwright | browser-based extraction fallbacks + auth-service browser login |
 | `dashboard` | streamlit, altair, duckdb | the analytics dashboard |
 | `api` | fastapi, uvicorn | the auth service (browser login → cookies) |
+| `ml` | fastembed (ONNX, no torch) | semantic embeddings (optional, heavy — not in `all`) |
+| `scraping` | selenium, seleniumbase, playwright, patchright, curl_cffi | browser extraction + auth-service login (heavy — not in `all`) |
+
+The granular extras still exist so the **Docker image** (`--extra dashboard` only) and **CI**
+(`elt`/`analysis`, plus `dashboard`/`api` in the quality job) stay lean; `all` is a
+convenience aggregate for local dev and does not change those.
 
 `structlog` ships in the core dependencies (structured logging).
 
@@ -29,8 +39,8 @@ cp .env.example .env
 
 | Target | Does |
 | --- | --- |
-| `make install` / `make install-ml` | sync deps (+ the `ml` extra) |
-| `make lint` / `make format` / `make typecheck` | ruff check / ruff format / mypy on the modern stack |
+| `make install` / `make install-ml` | sync the full local stack (`all`) / also the `ml` extra |
+| `make lint` / `make format` / `make format-check` / `make typecheck` | ruff check / ruff format (write) / ruff format (check only) / mypy on the modern stack |
 | `make test` | offline tests with coverage (`-m "not integration"`) |
 | `make elt` | dlt-load receipts + loyalty into DuckDB |
 | `make dbt` | `dbt build` (models + tests) |
@@ -40,6 +50,26 @@ cp .env.example .env
 | `make auth-service` | run the FastAPI auth service (browser login → cookies) |
 | `make docker-build` / `make docker-run` | build / run the dashboard container |
 | `make clean` | remove the DuckDB file and dbt artifacts |
+
+## Pre-commit hooks
+
+[.pre-commit-config.yaml](../.pre-commit-config.yaml) mirrors the CI **quality** job using
+the same tools and the same modern-stack scope. The hooks delegate to the Make targets, so
+the scope is single-sourced (Makefile `STACK` ↔ CI ↔ pre-commit) and never drifts.
+
+| Stage | Hooks |
+| --- | --- |
+| **commit** | `make lint` (ruff check), `make format-check` (ruff format --check), `make typecheck` (mypy), plus a large-file guard (PII) and merge-conflict check |
+| **push** | `make test` (offline pytest, `-m "not integration"`) — keeps commits fast, blocks pushes that break tests |
+
+```bash
+uv run pre-commit install                 # one-time: wire commit + push hooks
+uv run pre-commit run --all-files         # run the commit-stage hooks on demand
+uv run pre-commit run --all-files --hook-stage pre-push   # also run the test hook
+```
+
+The push hook needs the `elt`/`analysis` extras installed (`make install`). To bypass in a
+pinch: `git commit --no-verify` / `git push --no-verify`.
 
 ## Loading your real data
 

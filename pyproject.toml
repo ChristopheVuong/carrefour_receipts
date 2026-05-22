@@ -65,6 +65,13 @@ api = [
     "uvicorn[standard]>=0.30",
     "python-multipart>=0.0.9",
 ]
+# Convenience aggregate for local development: the full runnable stack (pipeline +
+# dashboard + auth service). The heavy/optional extras `scraping` (selenium/
+# playwright) and `ml` (fastembed/ONNX) stay opt-in. `make install` uses this; the
+# Docker image and CI keep their own lean subsets, so this never bloats them.
+all = [
+    "carrefour_receipts_api[elt,analysis,dashboard,api]",
+]
 
 [dependency-groups]
 # `uv sync` installs these by default (dev tooling).
@@ -73,6 +80,7 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.6",
     "mypy>=1.10",
+    "pre-commit>=3.7",
     "pandas-stubs>=2.0",
     "types-PyYAML>=6.0",
     "types-requests>=2.31",
