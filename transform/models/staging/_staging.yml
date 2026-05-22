@@ -5,7 +5,7 @@ models:
     description: "Cleaned loyalty (fidélité) line items, one row per loyalty line."
     columns:
       - name: loyalty_line_id
-        description: "Stable unique key (dlt surrogate) for the loyalty line."
+        description: "{{ doc('loyalty_row_key') }}"
         tests: [not_null, unique]
       - name: loyalty_date
         description: "Date the loyalty operation was recorded."

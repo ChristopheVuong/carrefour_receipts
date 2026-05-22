@@ -41,9 +41,10 @@ places:
 
 | Page | What it covers |
 | --- | --- |
+| [docs/usage.md](docs/usage.md) | **Start here** — full walkthrough: auth → extract → build → dashboard → refresh |
 | [docs/architecture.md](docs/architecture.md) | End-to-end data flow and how the pieces fit |
 | [docs/api-extraction.md](docs/api-extraction.md) | Scraping & authentication (cookies, Cloudflare), extractors |
-| [docs/processing.md](docs/processing.md) | Matching, embeddings, categorization, pandas analysis |
+| [docs/processing.md](docs/processing.md) | Matching, embeddings, categorization, loyalty merge key |
 | [docs/dashboard.md](docs/dashboard.md) | Running the Streamlit dashboard (local + Docker) |
 | [docs/development.md](docs/development.md) | Setup, extras, Make targets, tests/CI, env vars |
 

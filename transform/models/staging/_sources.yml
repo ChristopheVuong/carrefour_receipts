@@ -20,8 +20,12 @@ sources:
       - name: receipts__attributes__products__coupon
         description: "Coupons applied on the receipt."
       - name: loyalty
-        description: "Loyalty (fidélité) line items loaded by dlt from the CSV snapshot."
+        description: >
+          Loyalty (fidélité) line items loaded by dlt from the CSV. Merged on the
+          synthetic `loyalty_row_key` (no natural key exists), so DuckDB accumulates
+          history across loads even though the live API only returns a rolling
+          ~1-year window — a fresh extract never erases prior months.
         columns:
-          - name: _dlt_id
-            description: "dlt-generated stable surrogate key for the loyalty line."
+          - name: loyalty_row_key
+            description: "{{ doc('loyalty_row_key') }}"
             tests: [not_null, unique]

@@ -25,7 +25,9 @@ models:
     staging:
       +materialized: view
     intermediate:
-      +materialized: view
+      # Tables (not views): the two Python models are expensive (Hungarian
+      # one-to-one match, fuzzy categorization) and are joined by the marts.
+      +materialized: table
     marts:
       +materialized: table
       analytics:

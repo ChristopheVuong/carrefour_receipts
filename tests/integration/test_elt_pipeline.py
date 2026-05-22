@@ -95,15 +95,53 @@ def test_load_all_loads_loyalty_table(loaded_all: Path):
     assert cols["item_rd"] == "DOUBLE"
 
 
-def test_loyalty_replace_is_idempotent(tmp_path):
+def test_loyalty_merge_is_idempotent(tmp_path):
     db = tmp_path / "carrefour.duckdb"
     pdir = tmp_path / "dlt"
     load_all(FIXTURES, LOYALTY_CSV, str(db), "raw", pipelines_dir=pdir)
     load_all(FIXTURES, LOYALTY_CSV, str(db), "raw", pipelines_dir=pdir)
 
     con = duckdb.connect(str(db))
-    # loyalty uses write_disposition="replace" => re-running keeps a single snapshot.
+    # loyalty merges on the synthetic loyalty_row_key => re-running the same CSV
+    # never duplicates rows, and the key is unique.
     assert con.execute("select count(*) from raw.loyalty").fetchone()[0] == 8
+    assert (
+        con.execute("select count(distinct loyalty_row_key) from raw.loyalty").fetchone()[0] == 8
+    )
+
+
+def test_loyalty_merge_accumulates_overlapping_snapshots(tmp_path):
+    """A fresh ~1-year extract must not erase prior history (the merge fix).
+
+    Loads an older snapshot, then a newer one that overlaps it, and asserts the
+    table holds the *union* with the overlap deduped — proving DuckDB is the
+    durable archive even though the live API only returns a rolling window.
+    """
+    db = tmp_path / "carrefour.duckdb"
+    pdir = tmp_path / "dlt"
+    header = "operationId,date,earned,burned,itemLabel,promotionLabel,itemRd,loyaltyOperation\n"
+    old_row = "111,2023-01-15,0.21,0.0,BANANE BIO,,0.10,Paiement en caisse\n"
+    overlap_row = "222,2024-01-15,0.05,0.0,LAIT DEMI-ECREME 1L,,0.00,Paiement en caisse\n"
+    new_row = "333,2024-06-20,0.30,0.0,POMME GALA,,0.15,Paiement en caisse\n"
+
+    snapshot_a = tmp_path / "loyalty_a.csv"  # older window: old + overlap
+    snapshot_a.write_text(header + old_row + overlap_row, encoding="utf-8")
+    snapshot_b = tmp_path / "loyalty_b.csv"  # newer window: overlap + new
+    snapshot_b.write_text(header + overlap_row + new_row, encoding="utf-8")
+
+    from carrefour_receipts_api.elt.load import load_loyalty
+
+    load_loyalty(str(snapshot_a), str(db), "raw", pipelines_dir=pdir)
+    load_loyalty(str(snapshot_b), str(db), "raw", pipelines_dir=pdir)
+
+    con = duckdb.connect(str(db))
+    # union of {old, overlap, new} = 3 rows; the overlap appears once, the older
+    # month survived the second load (no replace wipe).
+    assert con.execute("select count(*) from raw.loyalty").fetchone()[0] == 3
+    labels = {
+        r[0] for r in con.execute("select item_label from raw.loyalty").fetchall()
+    }
+    assert labels == {"BANANE BIO", "LAIT DEMI-ECREME 1L", "POMME GALA"}
 
 
 @pytest.mark.parametrize(

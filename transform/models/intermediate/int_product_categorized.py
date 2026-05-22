@@ -15,8 +15,7 @@ Grain: one row per distinct ``product_label``.
 
 
 def model(dbt, session):
-    dbt.config(materialized="table")
-
+    # Materialized as a table via dbt_project.yml (intermediate: +materialized: table).
     from carrefour_receipts_api import config
     from carrefour_receipts_api.categorization import (
         categorize_labels,

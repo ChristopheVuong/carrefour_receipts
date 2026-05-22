@@ -12,9 +12,13 @@ Two resources feed the ``raw`` dataset:
     ``id`` primary key, so re-loading the same files never creates duplicates.
     dlt unnests nested arrays into child tables
     (e.g. ``receipts__attributes__products__product``).
-  - ``loyalty``: one row per loyalty line item (CSV snapshot). Loaded with a
-    ``replace`` disposition — the CSV is a full snapshot, so replacing the table
-    is the idempotent choice.
+  - ``loyalty``: one row per loyalty line item (CSV). Merged on a *synthetic*
+    row key (content signature + occurrence index) because a loyalty line has no
+    natural key (``operationId`` repeats; ``_dlt_id`` is a per-load surrogate).
+    The merge makes DuckDB the durable archive: since the live API only returns a
+    rolling ~1-year window, replacing the table would silently drop older history;
+    merging accumulates the union across loads instead (re-running never
+    duplicates, and a fresh ~1-year extract never erases prior months).
 
 The transformation (cleaning, the fidélité fuzzy-join, the star schema) then
 happens in dbt (see ``transform/``).
@@ -24,7 +28,9 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
+from collections import Counter
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -38,6 +44,20 @@ logger = get_logger(__name__)
 
 # Loyalty CSV columns that hold numeric amounts (coerced from str -> float|None).
 _LOYALTY_NUMERIC = ("earned", "burned", "itemRd")
+
+# Business fields whose combination identifies a loyalty line (no natural key exists).
+# The synthetic merge key is sha1(signature + occurrence index): two legitimately
+# identical lines in the same operation get distinct keys via the occurrence counter.
+_LOYALTY_KEY_FIELDS = (
+    "operationId",
+    "date",
+    "itemLabel",
+    "promotionLabel",
+    "earned",
+    "burned",
+    "itemRd",
+    "loyaltyOperation",
+)
 
 
 # --- Receipts ----------------------------------------------------------------
@@ -83,26 +103,51 @@ def _to_float(value: str | None) -> float | None:
         return None
 
 
+def _canon(value: Any) -> str:
+    """Canonical string for a key field: stable across loads and float formats."""
+    if value is None:
+        return ""
+    if isinstance(value, float):
+        return f"{value:.4f}"
+    return str(value).strip()
+
+
+def _loyalty_signature(row: dict[str, Any]) -> str:
+    """Content signature of a loyalty line (all business fields, canonicalised)."""
+    return "|".join(_canon(row.get(field)) for field in _LOYALTY_KEY_FIELDS)
+
+
 def iter_loyalty_rows(csv_path: str | Path) -> Iterator[dict[str, Any]]:
-    """Yield each loyalty line item from the snapshot CSV, with amounts coerced."""
+    """Yield each loyalty line item from the CSV, with amounts coerced and a
+    deterministic ``loyalty_row_key`` added for the dlt merge.
+
+    The key is ``sha1(signature | occurrence)``: the signature dedups identical
+    re-extracts across loads, and the occurrence index keeps legitimately
+    duplicate lines (e.g. two identical items in one operation) distinct.
+    """
     path = Path(csv_path)
     if not path.exists():
         raise FileNotFoundError(f"Loyalty CSV not found: {path}")
 
     count = 0
+    seen: Counter[str] = Counter()
     with path.open(newline="", encoding="utf-8") as fh:
         for row in csv.DictReader(fh):
             for field in _LOYALTY_NUMERIC:
                 if field in row:
                     row[field] = _to_float(row[field])
+            signature = _loyalty_signature(row)
+            occurrence = seen[signature]
+            seen[signature] += 1
+            row["loyalty_row_key"] = hashlib.sha1(f"{signature}|{occurrence}".encode()).hexdigest()
             count += 1
             yield row
     logger.info("loyalty_yielded", count=count, source=str(path))
 
 
-@dlt.resource(name="loyalty", write_disposition="replace")
+@dlt.resource(name="loyalty", primary_key="loyalty_row_key", write_disposition="merge")
 def loyalty_resource(csv_path: str | Path) -> Iterator[dict[str, Any]]:
-    """dlt resource streaming loyalty line items (full-snapshot replace)."""
+    """dlt resource streaming loyalty line items (merged on the synthetic key)."""
     yield from iter_loyalty_rows(csv_path)
 
 

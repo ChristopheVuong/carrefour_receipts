@@ -14,8 +14,7 @@ Grain: one row per loyalty line (unchanged), plus `matched_line_id`
 
 
 def model(dbt, session):
-    dbt.config(materialized="table")
-
+    # Materialized as a table via dbt_project.yml (intermediate: +materialized: table).
     from carrefour_receipts_api import config
     from carrefour_receipts_api.matching import match_loyalty_to_receipts
 

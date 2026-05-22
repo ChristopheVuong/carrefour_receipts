@@ -91,6 +91,13 @@ in your own normal browser (no automation at all), so it always works.
   per ID and writes JSON into `data/{YYYYMMDD}/`. Logging is structured (structlog) — set
   `LOG_JSON=true` for machine-readable output.
 
+> **Loyalty's rolling 1-year window.** The loyalty endpoint only returns operations from
+> roughly the last year, so each extract is a moving snapshot, not the full history. The ELT
+> loader absorbs this: `loyalty` is loaded with dlt `merge` on a synthetic per-line key, so
+> DuckDB **accumulates** the union across runs. A fresh ~1-year extract therefore never
+> erases the months you captured earlier (and re-running never duplicates rows). See the
+> loyalty resource in [elt/load.py](../src/carrefour_receipts_api/elt/load.py).
+
 ## Running it
 
 ```bash
