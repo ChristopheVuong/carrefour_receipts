@@ -1,9 +1,3 @@
----
-noteId: "6a0fd680555511f19bb6f1faf66f1118"
-tags: []
-
----
-
 # API extraction & authentication
 
 How raw receipts, Drive orders and loyalty (fidélité) operations are pulled from the

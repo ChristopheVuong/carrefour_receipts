@@ -1,9 +1,3 @@
----
-noteId: "5a16c9a0555511f19bb6f1faf66f1118"
-tags: []
-
----
-
 # carrefour_receipts
 
 Extract, model and analyze personal Carrefour receipts with a modern data stack:

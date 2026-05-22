@@ -1,9 +1,3 @@
----
-noteId: "87e1f670555511f19bb6f1faf66f1118"
-tags: []
-
----
-
 # Development
 
 ## Setup

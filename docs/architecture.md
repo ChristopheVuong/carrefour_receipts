@@ -1,9 +1,3 @@
----
-noteId: "62352ff0555511f19bb6f1faf66f1118"
-tags: []
-
----
-
 # Architecture
 
 The project is a small but complete analytics stack over personal Carrefour receipts.

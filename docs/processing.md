@@ -1,9 +1,3 @@
----
-noteId: "726ec840555511f19bb6f1faf66f1118"
-tags: []
-
----
-
 # Processing & matching
 
 The Python processing layer holds the analytical logic that doesn't belong in SQL — fuzzy

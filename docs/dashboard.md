@@ -1,9 +1,3 @@
----
-noteId: "76bf36a0555511f19bb6f1faf66f1118"
-tags: []
-
----
-
 # Dashboard
 
 An interactive [Streamlit](https://streamlit.io/) app over the dbt analytics marts:
