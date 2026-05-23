@@ -44,9 +44,11 @@ PASS_CARD_NUMBER: str = os.getenv("PASS_CARD_NUMBER") or _secrets.get("passCardN
 # successful login (used to detect completion and harvest the session cookies).
 CARREFOUR_LOGIN_URL: str = _get("CARREFOUR_LOGIN_URL", "https://www.carrefour.fr/login")
 CARREFOUR_ACCOUNT_URL: str = _get("CARREFOUR_ACCOUNT_URL", "https://www.carrefour.fr/mon-compte")
-# Authenticated JSON endpoint that returns the account's loyalty / Pass card numbers;
-# queried after login to capture them (more robust than scraping the account page DOM).
-CARREFOUR_ME_URL: str = _get("CARREFOUR_ME_URL", "https://www.carrefour.fr/api/me")
+# Authenticated JSON endpoint listing the account's loyalty / Pass cards (each with its
+# loyaltyCardNumber + loyaltyCardType); queried after login to capture them.
+CARREFOUR_CARDS_URL: str = _get(
+    "CARREFOUR_CARDS_URL", "https://www.carrefour.fr/api/user/secured/loyalty/my-cards"
+)
 
 # Persistent browser profile for the Playwright login flow. Reusing a real profile
 # (history, prior Turnstile passes) makes the browser look like a returning user, so

@@ -27,7 +27,7 @@ PASS_CARD_NUMBER=<your Pass Mastercard number, if any>
 ```
 
 …but you don't have to — the **auth service (step 2)** captures them for you (read from the
-`/api/me` JSON on login, or entered in its form) and stores them in `data/secrets.yml`.
+my-cards JSON on login, or entered in its form) and stores them in `data/secrets.yml`.
 `.env` always overrides that file if both are set.
 
 Everything else has sensible defaults (see [development.md](development.md#environment-variables)).
@@ -46,9 +46,14 @@ make auth-service   # starts FastAPI on http://localhost:8000
 
 Open `http://localhost:8000` and click **Open browser & capture cookies**. The service
 launches a Playwright/patchright browser; you log in (clearing Turnstile), and once you
-reach your account page it writes `data/cookies.txt` **and reads your loyalty / Pass card
-numbers** from `/api/me` into `data/secrets.yml`. If a number is missing, fill in the
-*Loyalty / fidélité card* form on the same page.
+reach your account page it:
+
+1. writes `data/cookies.txt`
+2. reads your **loyalty / Pass card numbers** from the my-cards endpoint and saves them to `data/secrets.yml`
+3. redirects your tab to a **confirmation page** showing both card numbers and the cookie count
+
+If a number is missing on the confirmation page, click *Back* and fill in the
+*Loyalty / fidélité card* form manually.
 
 > The service keeps running after a successful login — stop it with `Ctrl+C`.
 
@@ -187,7 +192,7 @@ deduplicates overlapping rows automatically.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Extractor returns 403 | Cookies expired | Re-run `make auth-service` → `POST /login` |
+| Extractor returns 403 | Cookies expired | Re-run `make auth-service` → click *Open browser & capture cookies* |
 | `dbt build` fails on `int_loyalty_matched` | `stg_loyalty` empty (loyalty CSV not loaded) | Check `LOYALTY_SOURCE_CSV` points at a real file, then `make elt` |
 | Dashboard shows "marts not found" | `dbt build` not run yet | `make build` |
 | Duplicate loyalty rows in DuckDB | Unlikely; if seen after a schema change to `loyalty_row_key` | `make clean && make build` with all archived files |

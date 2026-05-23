@@ -107,38 +107,68 @@ async def _launch_context(p: Playwright, profile_dir: str, *, patched: bool) -> 
     return context
 
 
-def parse_card_numbers(me_json: Any) -> dict[str, str | None]:
-    """Extract the loyalty / Pass card numbers from the ``/api/me`` JSON.
+# Every Carte Carrefour (LOYALTY) barcode shares the prefix "913572" (per Carrefour's own
+# documentation). The my-cards endpoint returns the number WITHOUT it (e.g. "0000005422294"),
+# but receipts and the loyalty API use the full barcode ("9135720000005422294"). The PASS
+# Mastercard number is already complete and is left untouched.
+_LOYALTY_PREFIX = "913572"
 
-    The payload nests card objects ``{"number": ..., "type": "LOYALTY"|"PASS_MASTERCARD"}``
-    under keys that may vary (``loyaltyCard``, ``loyaltyCards``, ...), so we walk the JSON
-    and pick up any dict carrying both ``number`` and ``type``. Classified by type:
-    PASS → Pass Mastercard, anything else → loyalty card. Best-effort: missing → ``None``.
+
+def _normalize_loyalty_number(number: str) -> str:
+    """Prepend the Carte Carrefour prefix to a LOYALTY number that lacks it (idempotent)."""
+    return number if number.startswith(_LOYALTY_PREFIX) else _LOYALTY_PREFIX + number
+
+
+def _card_from(node: dict[str, Any]) -> tuple[str, str] | None:
+    """Return ``(number, type)`` if ``node`` looks like a loyalty card, else ``None``.
+
+    Tolerant of the two known schemas: ``my-cards`` (``loyaltyCardNumber`` +
+    ``loyaltyCardType``) and ``/api/me`` (``number`` + ``type``).
+    """
+    number = node.get("loyaltyCardNumber") or node.get("number")
+    ctype = node.get("loyaltyCardType") or node.get("type")
+    if number and isinstance(ctype, str):
+        return str(number), ctype
+    return None
+
+
+def parse_card_numbers(payload: Any) -> dict[str, str | None]:
+    """Extract the loyalty / Pass card numbers from the my-cards JSON.
+
+    Walks the payload (``attributes`` is a list of cards) and classifies each card by
+    type: ``PASS`` → Pass Mastercard, anything else (``LOYALTY``) → loyalty card. The
+    LOYALTY number is normalized to its full barcode form (see ``_normalize_loyalty_number``).
+    The first number seen per type wins. Best-effort: a missing card stays ``None``.
     """
     result: dict[str, str | None] = {"loyaltyCardNumber": None, "passCardNumber": None}
 
     def visit(node: Any) -> None:
         if isinstance(node, dict):
-            number, ctype = node.get("number"), node.get("type")
-            if number and isinstance(ctype, str):
-                key = "passCardNumber" if "PASS" in ctype.upper() else "loyaltyCardNumber"
-                result[key] = result[key] or str(number)
+            card = _card_from(node)
+            if card is not None:
+                number, ctype = card
+                if "PASS" in ctype.upper():
+                    result["passCardNumber"] = result["passCardNumber"] or number
+                else:
+                    result["loyaltyCardNumber"] = result[
+                        "loyaltyCardNumber"
+                    ] or _normalize_loyalty_number(number)
             for value in node.values():
                 visit(value)
         elif isinstance(node, list):
             for item in node:
                 visit(item)
 
-    visit(me_json)
+    visit(payload)
     return result
 
 
 async def fetch_card_numbers(context: BrowserContext) -> dict[str, str | None]:
-    """Query the authenticated ``/api/me`` endpoint and parse the card numbers.
+    """Query the authenticated my-cards endpoint and parse the card numbers.
 
     Uses the browser context's request API so the session cookies are sent.
     """
-    response = await context.request.get(config.CARREFOUR_ME_URL)
+    response = await context.request.get(config.CARREFOUR_CARDS_URL)
     return parse_card_numbers(await response.json())
 
 
@@ -187,7 +217,7 @@ async def capture_cookies_via_browser(
                 "Login was not completed in time (never reached the account page)."
             ) from exc
 
-        # Best-effort: harvest the loyalty / Pass card numbers from /api/me.
+        # Best-effort: harvest the loyalty / Pass card numbers from the my-cards endpoint.
         # A failure here must never break cookie capture (the primary job).
         try:
             cards = await fetch_card_numbers(context)

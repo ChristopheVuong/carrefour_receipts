@@ -60,10 +60,7 @@ def _account_status() -> dict[str, object]:
     }
 
 
-_PAGE = """\
-<!doctype html><html><head><meta charset="utf-8">
-<title>Carrefour Auth</title>
-<style>
+_STYLE = """\
  body {{ font-family: system-ui, sans-serif; max-width: 640px; margin: 3rem auto; padding: 0 1rem; }}
  .card {{ border: 1px solid #ddd; border-radius: 8px; padding: 1rem 1.25rem; margin: 1rem 0; }}
  button {{ font-size: 1rem; padding: .5rem 1rem; cursor: pointer; }}
@@ -72,7 +69,16 @@ _PAGE = """\
  label {{ font-size: .9rem; }}
  code {{ background: #f4f4f4; padding: .1rem .3rem; border-radius: 4px; }}
  .ok {{ color: #137333; }} .no {{ color: #a50e0e; }}
-</style></head><body>
+ .success-banner {{ background: #e6f4ea; border: 1px solid #137333; border-radius: 8px;
+                    padding: 1.25rem 1.5rem; margin: 1rem 0; }}
+ .cred {{ font-family: monospace; font-size: 1rem; background: #f4f4f4;
+           padding: .2rem .5rem; border-radius: 4px; word-break: break-all; }}
+"""
+
+_PAGE = """\
+<!doctype html><html><head><meta charset="utf-8">
+<title>Carrefour Auth</title>
+<style>{style}</style></head><body>
 <h1>🧾 Carrefour Auth</h1>
 <p>Status: <strong class="{cls}">{status_text}</strong> &middot; <code>{cookies_file}</code></p>
 
@@ -113,14 +119,46 @@ _PAGE = """\
 </body></html>
 """
 
+_SUCCESS_PAGE = """\
+<!doctype html><html><head><meta charset="utf-8">
+<title>Carrefour Auth — Login OK</title>
+<style>{style}</style></head><body>
+<h1>🧾 Carrefour Auth</h1>
 
-@app.get("/", response_class=HTMLResponse)
-def index() -> HTMLResponse:
+<div class="success-banner">
+ <strong class="ok">&#10003; Login successful</strong> &mdash; {count} cookies saved
+ to <code>{cookies_file}</code>.
+</div>
+
+<div class="card">
+ <h3>Loyalty / fidélité card numbers</h3>
+ <table style="border-collapse:collapse;width:100%">
+  <tr>
+   <td style="padding:.4rem .6rem;width:40%;color:#555">Loyalty (Carte Carrefour)</td>
+   <td style="padding:.4rem .6rem"><span class="cred {loyalty_cls}">{loyalty_text}</span></td>
+  </tr>
+  <tr>
+   <td style="padding:.4rem .6rem;color:#555">Pass Mastercard</td>
+   <td style="padding:.4rem .6rem"><span class="cred {pass_cls}">{pass_text}</span></td>
+  </tr>
+ </table>
+ <p style="margin:.75rem 0 0;font-size:.85rem;color:#555">
+  Saved to <code>{secrets_file}</code>. You can now close this tab and run the extractor.
+ </p>
+</div>
+
+<p><a href="/">&larr; Back to main page</a></p>
+</body></html>
+"""
+
+
+def _render_index() -> HTMLResponse:
     status = _cookie_status()
     present = status["cookies_present"]
     account = _account_status()
     return HTMLResponse(
         _PAGE.format(
+            style=_STYLE,
             cls="ok" if present else "no",
             status_text=(f"{status['count']} cookies saved" if present else "no cookies yet"),
             cookies_file=status["cookies_file"],
@@ -135,6 +173,11 @@ def index() -> HTMLResponse:
     )
 
 
+@app.get("/", response_class=HTMLResponse)
+def index() -> HTMLResponse:
+    return _render_index()
+
+
 @app.get("/status")
 def status() -> JSONResponse:
     return JSONResponse(_cookie_status())
@@ -146,19 +189,30 @@ def login_redirect() -> RedirectResponse:
     return RedirectResponse(config.CARREFOUR_LOGIN_URL)
 
 
-@app.post("/login/browser")
-async def login_browser() -> JSONResponse:
+@app.post("/login/browser", response_class=HTMLResponse)
+async def login_browser() -> HTMLResponse:
     """Pop a browser at the login portal and capture cookies on completion."""
     from carrefour_receipts_api.auth_service.browser import capture_cookies_via_browser
 
     try:
         count = await capture_cookies_via_browser()
     except RuntimeError as exc:  # Playwright missing
-        return JSONResponse({"ok": False, "error": str(exc)}, status_code=501)
+        return HTMLResponse(f"<pre>Error: {exc}</pre>", status_code=501)
     except TimeoutError as exc:
-        return JSONResponse({"ok": False, "error": str(exc)}, status_code=408)
-    return JSONResponse(
-        {"ok": True, "count": count, **_cookie_status(), "account": _account_status()}
+        return HTMLResponse(f"<pre>Timeout: {exc}</pre>", status_code=408)
+    account = _account_status()
+    cookie_status = _cookie_status()
+    return HTMLResponse(
+        _SUCCESS_PAGE.format(
+            style=_STYLE,
+            count=count,
+            cookies_file=cookie_status["cookies_file"],
+            secrets_file=account["secrets_file"],
+            loyalty_cls="ok" if account["loyalty_present"] else "no",
+            loyalty_text=(account["loyalty_card_number"] or "not captured — enter below"),
+            pass_cls="ok" if account["pass_present"] else "no",
+            pass_text=(account["pass_card_number"] or "not captured — enter below"),
+        )
     )
 
 
