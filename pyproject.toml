@@ -41,12 +41,10 @@ analysis = [
 ml = [
     "fastembed>=0.4",
 ]
-# Browser-driven authentication / scraping fallbacks.
+# Browser-driven authentication (auth service) + browser-impersonating fetch.
 # patchright is a drop-in Playwright fork that hides the CDP Runtime.enable leak
 # Cloudflare Turnstile detects; the auth service prefers it when present.
 scraping = [
-    "selenium>=4.20",
-    "seleniumbase>=4.27",
     "playwright>=1.44",
     "patchright>=1.44",
     "curl-cffi>=0.7",

@@ -5,16 +5,6 @@ import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import pandas as pd
 
-# Matching primitives live in `matching` (no matplotlib) so the dbt Python model
-# can reuse them; re-exported here for backward compatibility.
-from carrefour_receipts_api.matching import (  # noqa: F401
-    find_best_pairings_one_by_one,
-    find_maximum_similarity_matching,
-    fuzzy_match,
-    match_loyalty_to_receipts,
-    preprocess,
-)
-
 
 def check_keys(keys: list[str], required_keys: list[str]):
     """
@@ -41,9 +31,9 @@ def unpack_dict_zip(input_dict):
         value if isinstance(value, list) else [value]  # Wrap non-list values in a list
         for value in input_dict.values()
     ]
-    pairings = zip(*normalized_values)
+    pairings = zip(*normalized_values, strict=False)
     # Create a list of dictionaries for each combination
-    return [dict(zip(keys, row)) for row in pairings]
+    return [dict(zip(keys, row, strict=False)) for row in pairings]
 
 
 def unpack_dict_with_combinations(input_dict):
@@ -68,7 +58,7 @@ def unpack_dict_with_combinations(input_dict):
     combinations = product(*normalized_values)
 
     # Create a list of dictionaries for each combination
-    return [dict(zip(keys, combination)) for combination in combinations]
+    return [dict(zip(keys, combination, strict=False)) for combination in combinations]
 
 
 def input_from_csv(
@@ -124,9 +114,7 @@ def display_amounts_month(
         )
 
     # Format the X-axis
-    plt.gca().xaxis.set_major_formatter(
-        mdates.DateFormatter("%b %Y")
-    )  # Format as "Jan 2025"
+    plt.gca().xaxis.set_major_formatter(mdates.DateFormatter("%b %Y"))  # Format as "Jan 2025"
     plt.gca().xaxis.set_major_locator(mdates.MonthLocator())  # Show one tick per month
     plt.xticks(rotation=45)  # Rotate labels for better readability
 

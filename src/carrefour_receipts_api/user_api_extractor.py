@@ -1,16 +1,15 @@
-# -*- coding: utf-8 -*-
 """
 TODO: Try batch call API with receipt refs
 """
 
-from abc import ABC, abstractmethod
 import csv
+import json
+from abc import ABC, abstractmethod
 from datetime import datetime
 from http.cookiejar import MozillaCookieJar
-import json
-from typing import Any, cast
 from pathlib import Path
-from urllib.parse import urlencode, unquote
+from typing import Any, cast
+from urllib.parse import unquote, urlencode
 
 from carrefour_receipts_api import config
 from carrefour_receipts_api.logging_config import get_logger
@@ -78,9 +77,7 @@ class BaseExtractor(ABC):
         pass
 
     @abstractmethod
-    def fetch_details(
-        self, base_url: str, refs: dict[str, Any], verbose: bool = False
-    ) -> None:
+    def fetch_details(self, base_url: str, refs: dict[str, Any], verbose: bool = False) -> None:
         """
         Fetch detailed data (either receipts, orders, or loyalty data) from the API and write it to json file.
         Args:
@@ -102,9 +99,7 @@ class BaseExtractor(ABC):
             filepath = Path(self.dst_folder) / date_str / filename
             if not filepath.parent.exists():
                 filepath.parent.mkdir(parents=True, exist_ok=True)
-            filepath.write_text(
-                json.dumps(data, ensure_ascii=False, indent=4), encoding="utf-8"
-            )
+            filepath.write_text(json.dumps(data, ensure_ascii=False, indent=4), encoding="utf-8")
             logger.info(f"Data saved to: {self.dst_folder}/{filename}")
 
     @classmethod
@@ -126,9 +121,7 @@ class CarrefourBaseExtractor(BaseExtractor):
     RECORD_TYPE = ""
     PARAM_KEYS = []
 
-    def __init__(
-        self, cookies_file: str = COOKIES_FILE, dst_folder: str = DATA_DIRECTORY
-    ) -> None:
+    def __init__(self, cookies_file: str = COOKIES_FILE, dst_folder: str = DATA_DIRECTORY) -> None:
         """
         Initialize the handler with default configurations.
         Args:
@@ -299,14 +292,12 @@ class CarrefourBaseExtractor(BaseExtractor):
             criterion1 (str): Name criterion for JSON files.
             criterion2 (str): Additional criterion for filtering files by batch (the extraction date by default).
             output_file (str): Path to the output CSV file.
-
-        Note: This is a quick workaround to limit the number of insertions in MongoDB.
         """
         rows = []
         headers = self.__class__.get_list_headers()
         headers.append("dateExtraction")
         for file in Path(self.dst_folder).rglob(f"{criterion2}*{criterion1}*.json"):
-            with open(file, "r", encoding="utf-8") as f:
+            with open(file, encoding="utf-8") as f:
                 item = json.load(f)
                 self.__class__.append_row_data(item, rows, headers, criterion2)
         logger.info(f"Extracted {len(rows)} {self.__class__.RECORD_TYPE} IDs.")
@@ -318,9 +309,7 @@ class CarrefourBaseExtractor(BaseExtractor):
                 if not file_exists:
                     writer.writerow(headers)
                 writer.writerows(rows)
-            logger.info(
-                f"{self.__class__.RECORD_TYPE} IDs saved to: {output_file}".capitalize()
-            )
+            logger.info(f"{self.__class__.RECORD_TYPE} IDs saved to: {output_file}".capitalize())
         else:
             logger.warning(f"No {self.__class__.RECORD_TYPE} IDs found.")
 
@@ -368,7 +357,7 @@ class CarrefourBaseExtractor(BaseExtractor):
 
         # Read the file and filter out duplicates
         try:
-            with open(file_path, "r", encoding="utf-8") as infile:
+            with open(file_path, encoding="utf-8") as infile:
                 reader = csv.reader(infile)
                 for row in reader:
                     if row[0] not in seen:  # Check if the first column value is unique
@@ -385,9 +374,7 @@ class CarrefourBaseExtractor(BaseExtractor):
 
         logger.info(f"Duplicates removed in place. File updated: {file_path}")
 
-    def fetch_details(
-        self, base_url: str, refs: dict[str, Any], verbose: bool = False
-    ) -> None:
+    def fetch_details(self, base_url: str, refs: dict[str, Any], verbose: bool = False) -> None:
         """
         Fetch detailed receipt data from the API.
         Args:
@@ -440,7 +427,7 @@ class CarrefourBaseExtractor(BaseExtractor):
         """
         headers = self.get_list_headers()
         try:
-            with open(input_file, "r", encoding="utf-8") as f:
+            with open(input_file, encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
                     # criterion based on date
@@ -600,9 +587,7 @@ class CarrefourLoyaltyExtractor(CarrefourBaseExtractor):
         month = int(date[:2])
         year = int(date[-4:])
         logger.info("Fetching initial data...")
-        current_date = datetime(
-            year=year, month=month, day=1
-        )  # Start with the initial date
+        current_date = datetime(year=year, month=month, day=1)  # Start with the initial date
         end_date_obj = datetime(
             year=end_date.year, month=end_date.month, day=1
         )  # Normalize end_date to the first day of the month
@@ -624,16 +609,12 @@ class CarrefourLoyaltyExtractor(CarrefourBaseExtractor):
 
                 if not data:
                     logger.info("No data to fetch.")
-                    current_date = self._increment_month(
-                        current_date
-                    )  # Increment the date
+                    current_date = self._increment_month(current_date)  # Increment the date
                     continue
 
                 # Process history data
                 if "history" in data and not data["history"]:
-                    current_date = self._increment_month(
-                        current_date
-                    )  # Increment the date
+                    current_date = self._increment_month(current_date)  # Increment the date
                     continue
 
                 # Save the data to a file
@@ -721,10 +702,6 @@ def main(record_type: str):
 
     extractor = factory.get_extractor(record_type)
 
-    # # Step 0: Perform login
-    # login = AccountLogin()
-    # handler.perform_login("https://www.carrefour.fr/login")
-
     # Step 1: Fetch paginated data or whole data
     if len(list_params) > 0:
         for p in list_params:
@@ -742,9 +719,7 @@ def main(record_type: str):
         criterion2=datetime.now().strftime("%Y%m%d"),
         output_file=f"{DATA_DIRECTORY}/{record_type}_ids.csv",
     )
-    CarrefourBaseExtractor.remove_duplicates_from_list(
-        f"{DATA_DIRECTORY}/{record_type}_ids.csv"
-    )
+    CarrefourBaseExtractor.remove_duplicates_from_list(f"{DATA_DIRECTORY}/{record_type}_ids.csv")
 
     # Step 3: Fetch receipt details
     extractor.fetch_details_from_file(
@@ -793,9 +768,7 @@ class CarrefourDataExtractorFactory:
     Factory class to create extractor instances for receipts, orders, or loyalty operations.
     """
 
-    def __init__(
-        self, cookies_file: str = COOKIES_FILE, dst_folder: str = DATA_DIRECTORY
-    ) -> None:
+    def __init__(self, cookies_file: str = COOKIES_FILE, dst_folder: str = DATA_DIRECTORY) -> None:
         """
         Initialize the factory with default configurations.
 
@@ -828,9 +801,7 @@ class CarrefourDataExtractorFactory:
             case "loyalty_operation":
                 return CarrefourLoyaltyExtractor(self.cookies_file, self.dst_folder)
             case _:
-                raise ValueError(
-                    "Invalid type. Choose 'receipt', 'order', or 'loyalty_operation'."
-                )
+                raise ValueError("Invalid type. Choose 'receipt', 'order', or 'loyalty_operation'.")
 
 
 # Main execution

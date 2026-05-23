@@ -23,10 +23,10 @@ Data flows left to right; each stage is independently runnable.
 
 | Stage | Code | Output |
 | --- | --- | --- |
-| **Extract** | [user_api_extractor.py](../src/carrefour_receipts_api/user_api_extractor.py), [login.py](../src/carrefour_receipts_api/login.py) | JSON/CSV under `data/` |
+| **Extract** | [user_api_extractor.py](../src/carrefour_receipts_api/user_api_extractor.py) | JSON/CSV under `data/` |
 | **Load (EL)** | [elt/load.py](../src/carrefour_receipts_api/elt/load.py) (dlt) | `raw.*` tables in DuckDB |
 | **Transform (T)** | [transform/](../transform/) (dbt) | star schema + analytics marts |
-| **Process (ad-hoc)** | [matching.py](../src/carrefour_receipts_api/matching.py), [categorization.py](../src/carrefour_receipts_api/categorization.py), [embeddings.py](../src/carrefour_receipts_api/embeddings.py), [pandas_postprocessing.py](../src/carrefour_receipts_api/pandas_postprocessing.py) | CSV extracts / notebooks |
+| **Process (Python in dbt)** | [matching.py](../src/carrefour_receipts_api/matching.py), [categorization.py](../src/carrefour_receipts_api/categorization.py), [embeddings.py](../src/carrefour_receipts_api/embeddings.py) | imported by the dbt Python models |
 | **Serve** | [dashboard/app.py](../src/carrefour_receipts_api/dashboard/app.py) (Streamlit) | interactive dashboard |
 
 ## Design choices

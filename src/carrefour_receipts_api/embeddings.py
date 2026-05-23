@@ -5,14 +5,12 @@ the ONNX Runtime, so it installs and runs on macOS x86_64 (Intel) where recent
 ``torch`` ships no wheels — which is exactly what broke ``uv sync`` here.
 
 ``Encoder`` is a thin adapter exposing a ``.encode()`` method compatible with the
-``sentence-transformers`` call sites in :mod:`carrefour_receipts_api.pandas_postprocessing`
-(single string -> 1-D vector, iterable -> 2-D array), so the existing batch /
-cached embedding helpers keep working unchanged.
+``sentence-transformers`` API (single string -> 1-D vector, iterable -> 2-D array),
+consumed by :func:`carrefour_receipts_api.categorization.categorize_labels_semantic`.
 
-Embeddings are the *advanced* path for the loyalty (fidélité) label join. The
-production join is the dbt Python model ``int_loyalty_matched`` (one-to-one Hungarian
-assignment over rapidfuzz similarity); this module is for the higher-quality semantic
-matching explored in pandas.
+Embeddings are the *optional* semantic path for product categorization. The default
+production path is rapidfuzz keyword matching (:mod:`carrefour_receipts_api.categorization`);
+this module enables the higher-quality semantic variant when the ``ml`` extra is present.
 """
 
 from __future__ import annotations

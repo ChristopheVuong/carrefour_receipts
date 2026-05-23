@@ -66,21 +66,14 @@ Turnstile also weighs IP reputation and behavioral signals, so even patched auto
 be challenged. When that happens, use the manual `POST /cookies` paste below — you log in
 in your own normal browser (no automation at all), so it always works.
 
-### Manual fallbacks (no service)
+### Manual fallback (no service)
 
-1. **Copy-as-cURL.** Log in in a browser (clearing Turnstile), DevTools → Network →
-   right-click a request → *Copy as cURL*; save the cookies to `COOKIES_FILE`. Run the
-   extractor from the **same IP** used to load the site.
-2. **Browser automation (deprecated).** `undetected_chromedriver` / SeleniumBase /
-   Playwright drivers in
-   [seleniumbase_extractor.py](../src/carrefour_receipts_api/seleniumbase_extractor.py)
-   and [playwright_extractor.py](../src/carrefour_receipts_api/playwright_extractor.py)
-   (install with the `scraping` extra). Superseded by the auth service.
+**Copy-as-cURL.** Log in in a browser (clearing Turnstile), DevTools → Network →
+right-click a request → *Copy as cURL*; save the cookies to `COOKIES_FILE`. Run the
+extractor from the **same IP** used to load the site.
 
 ## Modules
 
-- [login.py](../src/carrefour_receipts_api/login.py) — loads credentials from the YAML
-  secrets file (`SECRETS_FILE`, default `data/secrets.yml`) and parses the cookie jar.
 - [user_api_extractor.py](../src/carrefour_receipts_api/user_api_extractor.py) — the
   extractors. A small factory builds the right one per record type:
   - `CarrefourReceiptExtractor` — in-store receipts,

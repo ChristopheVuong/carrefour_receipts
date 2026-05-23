@@ -1,8 +1,8 @@
 .PHONY: install install-ml lint format format-check typecheck test elt dbt build clean dashboard docs-dbt docker-build docker-run auth-service
 
-# Modern data stack dev workflow. Requires `uv` (https://docs.astral.sh/uv/).
+# Dev workflow. Requires `uv` (https://docs.astral.sh/uv/).
 
-# Files that make up the modern data stack (kept in sync with CI lint scope).
+# Modern data stack modules — mypy scope (legacy modules have unresolved typing debt).
 STACK := src/carrefour_receipts_api/config.py src/carrefour_receipts_api/embeddings.py src/carrefour_receipts_api/matching.py src/carrefour_receipts_api/categorization.py src/carrefour_receipts_api/logging_config.py src/carrefour_receipts_api/elt src/carrefour_receipts_api/dashboard src/carrefour_receipts_api/auth_service
 
 install:  ## Create the venv and install the full local stack (dev + `all` extra)
@@ -11,16 +11,16 @@ install:  ## Create the venv and install the full local stack (dev + `all` extra
 install-ml:  ## Full stack plus the semantic-matching extra (fastembed, ONNX — no torch)
 	uv sync --extra all --extra ml
 
-lint:  ## Ruff lint (modern stack + tests)
-	uv run ruff check $(STACK) tests
+lint:  ## Ruff lint (whole codebase)
+	uv run ruff check src tests
 
-format:  ## Auto-format the modern stack code
-	uv run ruff format $(STACK)
+format:  ## Auto-format the whole codebase
+	uv run ruff format src
 
 format-check:  ## Check formatting without modifying files (CI / pre-commit parity)
-	uv run ruff format --check $(STACK)
+	uv run ruff format --check src
 
-typecheck:  ## Mypy on the modern stack code
+typecheck:  ## Mypy on the modern stack code (legacy modules excluded — unresolved typing debt)
 	uv run mypy $(STACK)
 
 test:  ## Run offline tests with coverage (skip live-API integration tests)

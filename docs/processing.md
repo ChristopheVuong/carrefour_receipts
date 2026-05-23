@@ -1,9 +1,8 @@
 # Processing & matching
 
 The Python processing layer holds the analytical logic that doesn't belong in SQL — fuzzy
-matching, embeddings, categorization — plus the legacy pandas exploration. The two
-matching/categorization primitives are imported by the dbt **Python models**, so they are
-kept free of heavy/plotting dependencies.
+matching, embeddings, categorization. The two matching/categorization primitives are
+imported by the dbt **Python models**, so they are kept free of heavy/plotting dependencies.
 
 ## Fidélité one-to-one matching — [matching.py](../src/carrefour_receipts_api/matching.py)
 
@@ -59,18 +58,9 @@ returns a rolling ~1-year window (see [api-extraction.md](api-extraction.md)).
 > `_LOYALTY_KEY_FIELDS` or `_canon` invalidates every key → drop `raw.loyalty`, wipe the dlt
 > state, and reload.
 
-## Pandas exploration — [pandas_postprocessing.py](../src/carrefour_receipts_api/pandas_postprocessing.py)
-
-The original notebook-style analysis: `main_matching(date)` computes label embeddings and
-matches loyalty items to products; `main_merging(date)` allocates loyalty/shelf discounts
-to products and derives a "true" unit price. Kept for ad-hoc exploration — the production
-fidélité join is the dbt model. `pandas_postprocessing_advanced.py` holds a torch-based
-cosine variant (least used).
-
 ## Where each runs
 
 | Code | Imported by | Heavy deps |
 | --- | --- | --- |
 | `matching.py`, `categorization.py` | dbt Python models + CLI/tests | rapidfuzz, scipy (`analysis`) |
-| `embeddings.py` | pandas exploration, optional semantic categorization | fastembed (`ml`) |
-| `pandas_postprocessing*.py` | manual / notebooks | matplotlib, sklearn, fastembed |
+| `embeddings.py` | optional semantic categorization | fastembed (`ml`) |
