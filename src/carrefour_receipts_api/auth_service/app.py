@@ -4,16 +4,19 @@ Endpoints:
   - ``GET  /``                landing page (status + buttons)
   - ``GET  /status``          JSON: are valid cookies present?
   - ``POST /login/browser``   pop a real browser at the login portal, capture cookies
-                              when login completes (needs the ``scraping`` extra)
+                              (and scrape the loyalty/Pass card numbers) on completion
+                              (needs the ``scraping`` extra)
   - ``GET  /login/redirect``  redirect the current tab to the Carrefour login portal
                               (manual path — log in, then paste the cookie header below)
   - ``POST /cookies``         manual fallback: paste a ``Cookie:`` header to save it
+  - ``POST /account``         save the loyalty / Pass card numbers (manual fallback)
 
 Run: ``make auth-service`` or ``uvicorn carrefour_receipts_api.auth_service.app:app``.
 """
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, Form
@@ -25,6 +28,7 @@ from carrefour_receipts_api.auth_service.cookies import (
     count_cookies,
     write_cookies_file,
 )
+from carrefour_receipts_api.secrets_store import read_secrets, write_secrets
 
 app = FastAPI(title="Carrefour Auth Service")
 
@@ -38,6 +42,24 @@ def _cookie_status() -> dict[str, object]:
     return {"cookies_present": count > 0, "count": count, "cookies_file": str(path)}
 
 
+def _account_status() -> dict[str, object]:
+    """Resolve the card numbers live (env override > secrets.yml) for display/JSON.
+
+    Reads the file fresh rather than via ``config`` (which is frozen at import), so the
+    UI reflects a number the browser flow just scraped.
+    """
+    secrets = read_secrets(config.SECRETS_FILE)
+    loyalty = os.getenv("LOYALTY_CARD_NUMBER") or secrets.get("loyaltyCardNumber", "")
+    pass_ = os.getenv("PASS_CARD_NUMBER") or secrets.get("passCardNumber", "")
+    return {
+        "loyalty_present": bool(loyalty),
+        "pass_present": bool(pass_),
+        "loyalty_card_number": loyalty,
+        "pass_card_number": pass_,
+        "secrets_file": config.SECRETS_FILE,
+    }
+
+
 _PAGE = """\
 <!doctype html><html><head><meta charset="utf-8">
 <title>Carrefour Auth</title>
@@ -46,6 +68,8 @@ _PAGE = """\
  .card {{ border: 1px solid #ddd; border-radius: 8px; padding: 1rem 1.25rem; margin: 1rem 0; }}
  button {{ font-size: 1rem; padding: .5rem 1rem; cursor: pointer; }}
  textarea {{ width: 100%; height: 5rem; }}
+ input[type=text] {{ width: 100%; padding: .35rem; margin: .15rem 0 .6rem; }}
+ label {{ font-size: .9rem; }}
  code {{ background: #f4f4f4; padding: .1rem .3rem; border-radius: 4px; }}
  .ok {{ color: #137333; }} .no {{ color: #a50e0e; }}
 </style></head><body>
@@ -72,6 +96,20 @@ _PAGE = """\
    <button type="submit">Save cookies</button>
  </form>
 </div>
+
+<div class="card">
+ <h3>3. Loyalty / fidélité card</h3>
+ <p>Captured automatically from your account page during browser login, or set them
+    here. Used as the receipt/loyalty API parameters, saved to <code>{secrets_file}</code>
+    (<code>.env</code> still overrides).</p>
+ <p>Loyalty: <strong class="{loyalty_cls}">{loyalty_text}</strong> &middot;
+    Pass: <strong class="{pass_cls}">{pass_text}</strong></p>
+ <form method="post" action="/account">
+   <label>Loyalty card number<input type="text" name="loyalty_card_number" value="{loyalty_value}"></label>
+   <label>Pass card number<input type="text" name="pass_card_number" value="{pass_value}"></label>
+   <button type="submit">Save card numbers</button>
+ </form>
+</div>
 </body></html>
 """
 
@@ -80,11 +118,19 @@ _PAGE = """\
 def index() -> HTMLResponse:
     status = _cookie_status()
     present = status["cookies_present"]
+    account = _account_status()
     return HTMLResponse(
         _PAGE.format(
             cls="ok" if present else "no",
             status_text=(f"{status['count']} cookies saved" if present else "no cookies yet"),
             cookies_file=status["cookies_file"],
+            secrets_file=account["secrets_file"],
+            loyalty_cls="ok" if account["loyalty_present"] else "no",
+            loyalty_text=(account["loyalty_card_number"] or "not set"),
+            pass_cls="ok" if account["pass_present"] else "no",
+            pass_text=(account["pass_card_number"] or "not set"),
+            loyalty_value=account["loyalty_card_number"],
+            pass_value=account["pass_card_number"],
         )
     )
 
@@ -111,7 +157,9 @@ async def login_browser() -> JSONResponse:
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=501)
     except TimeoutError as exc:
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=408)
-    return JSONResponse({"ok": True, "count": count, **_cookie_status()})
+    return JSONResponse(
+        {"ok": True, "count": count, **_cookie_status(), "account": _account_status()}
+    )
 
 
 @app.post("/cookies")
@@ -123,6 +171,23 @@ def save_cookies(cookie_header: str = Form(...)) -> JSONResponse:
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
     count = write_cookies_file(netscape, config.COOKIES_FILE)
     return JSONResponse({"ok": True, "count": count, **_cookie_status()})
+
+
+@app.post("/account")
+def save_account(
+    loyalty_card_number: str = Form(""),
+    pass_card_number: str = Form(""),
+) -> JSONResponse:
+    """Save the loyalty / Pass card numbers to the secrets file (manual fallback).
+
+    Empty fields are ignored, so submitting one number never wipes the other.
+    """
+    write_secrets(
+        config.SECRETS_FILE,
+        loyaltyCardNumber=loyalty_card_number,
+        passCardNumber=pass_card_number,
+    )
+    return JSONResponse({"ok": True, **_account_status()})
 
 
 def main() -> None:

@@ -15,6 +15,8 @@ import os
 
 from dotenv import find_dotenv, load_dotenv
 
+from carrefour_receipts_api.secrets_store import read_secrets
+
 # Walk up from the current working directory to find a .env (no error if absent).
 load_dotenv(find_dotenv(usecwd=True))
 
@@ -28,17 +30,23 @@ DATA_DIRECTORY: str = _get("DATA_DIRECTORY", "data")
 COOKIES_FILE: str = _get("COOKIES_FILE", f"{DATA_DIRECTORY}/cookies.txt")
 SECRETS_FILE: str = _get("SECRETS_FILE", f"{DATA_DIRECTORY}/secrets.yml")
 
-# --- Loyalty / fidélité identifiers (PII — keep in .env, never commit) -------
+# --- Loyalty / fidélité identifiers (PII — keep out of git, never commit) ----
 # Carrefour card numbers used as query params on the receipt/loyalty endpoints.
-# Previously read from data/secrets.yml; now env-driven so they live in .env.
-LOYALTY_CARD_NUMBER: str = _get("LOYALTY_CARD_NUMBER", "")
-PASS_CARD_NUMBER: str = _get("PASS_CARD_NUMBER", "")
+# Resolution: the environment variable wins (override), else the value captured by
+# the auth service into SECRETS_FILE (data/secrets.yml), else empty. The auth
+# service scrapes these from the account page or takes them from a manual form.
+_secrets = read_secrets(SECRETS_FILE)
+LOYALTY_CARD_NUMBER: str = os.getenv("LOYALTY_CARD_NUMBER") or _secrets.get("loyaltyCardNumber", "")
+PASS_CARD_NUMBER: str = os.getenv("PASS_CARD_NUMBER") or _secrets.get("passCardNumber", "")
 
 # --- Carrefour auth portal (used by the FastAPI auth service) ---------------
 # Where to send the user to authenticate, and the account area we expect after a
 # successful login (used to detect completion and harvest the session cookies).
 CARREFOUR_LOGIN_URL: str = _get("CARREFOUR_LOGIN_URL", "https://www.carrefour.fr/login")
 CARREFOUR_ACCOUNT_URL: str = _get("CARREFOUR_ACCOUNT_URL", "https://www.carrefour.fr/mon-compte")
+# Authenticated JSON endpoint that returns the account's loyalty / Pass card numbers;
+# queried after login to capture them (more robust than scraping the account page DOM).
+CARREFOUR_ME_URL: str = _get("CARREFOUR_ME_URL", "https://www.carrefour.fr/api/me")
 
 # Persistent browser profile for the Playwright login flow. Reusing a real profile
 # (history, prior Turnstile passes) makes the browser look like a returning user, so

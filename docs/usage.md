@@ -19,12 +19,16 @@ uv sync --extra elt --extra analysis --extra dashboard --extra scraping --extra 
 cp .env.example .env
 ```
 
-Edit `.env` — the minimum required fields:
+You can set your card numbers in `.env`:
 
 ```ini
 LOYALTY_CARD_NUMBER=<your fidélité card number>
 PASS_CARD_NUMBER=<your Pass Mastercard number, if any>
 ```
+
+…but you don't have to — the **auth service (step 2)** captures them for you (read from the
+`/api/me` JSON on login, or entered in its form) and stores them in `data/secrets.yml`.
+`.env` always overrides that file if both are set.
 
 Everything else has sensible defaults (see [development.md](development.md#environment-variables)).
 The `data/` directory is git-ignored; all personal data stays there.
@@ -40,10 +44,11 @@ once. The **auth service** automates this:
 make auth-service   # starts FastAPI on http://localhost:8000
 ```
 
-Open `http://localhost:8000/docs` in your browser and call `POST /login` with your
-Carrefour credentials. The service launches a Playwright/patchright browser, completes
-the login (including Turnstile), writes `data/cookies.txt`, and returns
-`{"status": "ok"}`.
+Open `http://localhost:8000` and click **Open browser & capture cookies**. The service
+launches a Playwright/patchright browser; you log in (clearing Turnstile), and once you
+reach your account page it writes `data/cookies.txt` **and reads your loyalty / Pass card
+numbers** from `/api/me` into `data/secrets.yml`. If a number is missing, fill in the
+*Loyalty / fidélité card* form on the same page.
 
 > The service keeps running after a successful login — stop it with `Ctrl+C`.
 

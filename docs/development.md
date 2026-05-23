@@ -113,7 +113,8 @@ defaults in [.env.example](../.env.example):
 | --- | --- | --- |
 | `DATA_DIRECTORY` | `data` | root for cookies/secrets/extracts |
 | `COOKIES_FILE`, `SECRETS_FILE` | `data/cookies.txt`, `data/secrets.yml` | auth inputs |
-| `LOYALTY_CARD_NUMBER`, `PASS_CARD_NUMBER` | _(empty)_ | fidélité card numbers (PII) — receipt/loyalty endpoint params |
+| `LOYALTY_CARD_NUMBER`, `PASS_CARD_NUMBER` | _(empty)_ | fidélité card numbers (PII) — receipt/loyalty endpoint params. **Resolved env-var-first, then `SECRETS_FILE`** (the auth service scrapes/saves them there). |
+| `CARREFOUR_ME_URL` | `…/api/me` | authenticated JSON endpoint the auth service reads for the card numbers |
 | `CARREFOUR_TLS_IMPERSONATE` | `edge101` | curl_cffi browser TLS fingerprint (past Cloudflare) |
 | `DUCKDB_PATH` | `carrefour.duckdb` | DuckDB file (also read by the dbt profile) |
 | `DUCKDB_DATASET` | `raw` | dlt target schema |

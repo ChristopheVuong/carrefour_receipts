@@ -23,6 +23,7 @@ from carrefour_receipts_api.auth_service.cookies import (
     write_cookies_file,
 )
 from carrefour_receipts_api.logging_config import get_logger
+from carrefour_receipts_api.secrets_store import write_secrets
 
 if TYPE_CHECKING:
     from playwright.async_api import BrowserContext, Playwright
@@ -106,6 +107,41 @@ async def _launch_context(p: Playwright, profile_dir: str, *, patched: bool) -> 
     return context
 
 
+def parse_card_numbers(me_json: Any) -> dict[str, str | None]:
+    """Extract the loyalty / Pass card numbers from the ``/api/me`` JSON.
+
+    The payload nests card objects ``{"number": ..., "type": "LOYALTY"|"PASS_MASTERCARD"}``
+    under keys that may vary (``loyaltyCard``, ``loyaltyCards``, ...), so we walk the JSON
+    and pick up any dict carrying both ``number`` and ``type``. Classified by type:
+    PASS → Pass Mastercard, anything else → loyalty card. Best-effort: missing → ``None``.
+    """
+    result: dict[str, str | None] = {"loyaltyCardNumber": None, "passCardNumber": None}
+
+    def visit(node: Any) -> None:
+        if isinstance(node, dict):
+            number, ctype = node.get("number"), node.get("type")
+            if number and isinstance(ctype, str):
+                key = "passCardNumber" if "PASS" in ctype.upper() else "loyaltyCardNumber"
+                result[key] = result[key] or str(number)
+            for value in node.values():
+                visit(value)
+        elif isinstance(node, list):
+            for item in node:
+                visit(item)
+
+    visit(me_json)
+    return result
+
+
+async def fetch_card_numbers(context: BrowserContext) -> dict[str, str | None]:
+    """Query the authenticated ``/api/me`` endpoint and parse the card numbers.
+
+    Uses the browser context's request API so the session cookies are sent.
+    """
+    response = await context.request.get(config.CARREFOUR_ME_URL)
+    return parse_card_numbers(await response.json())
+
+
 async def capture_cookies_via_browser(
     login_url: str | None = None,
     success_url: str | None = None,
@@ -150,6 +186,24 @@ async def capture_cookies_via_browser(
             raise TimeoutError(
                 "Login was not completed in time (never reached the account page)."
             ) from exc
+
+        # Best-effort: harvest the loyalty / Pass card numbers from /api/me.
+        # A failure here must never break cookie capture (the primary job).
+        try:
+            cards = await fetch_card_numbers(context)
+            write_secrets(
+                config.SECRETS_FILE,
+                loyaltyCardNumber=cards.get("loyaltyCardNumber"),
+                passCardNumber=cards.get("passCardNumber"),
+            )
+            logger.info(
+                "loyalty_cards_captured",
+                loyalty_present=bool(cards.get("loyaltyCardNumber")),
+                pass_present=bool(cards.get("passCardNumber")),
+                secrets_file=config.SECRETS_FILE,
+            )
+        except Exception as exc:  # noqa: BLE001 - capture is best-effort
+            logger.warning("loyalty_capture_failed", error=str(exc))
 
         cookies = await context.cookies()
         await context.close()

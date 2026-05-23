@@ -61,6 +61,33 @@ _LOYALTY_KEY_FIELDS = (
 
 
 # --- Receipts ----------------------------------------------------------------
+# Product money fields that must stay decimal. dlt infers a column's type from the values
+# it sees: immediateDiscount is usually 0 (int), so dlt picks BIGINT and then silently
+# NULLs a genuine decimal like -1.1. Coercing to float forces a DOUBLE column.
+_RECEIPT_PRODUCT_FLOAT_FIELDS = ("immediateDiscount", "unitPrice", "totalPrice")
+
+
+def _coerce_receipt_numbers(record: dict[str, Any]) -> None:
+    """In place: force decimal-capable product fields to float so dlt types them DOUBLE."""
+    attributes = record.get("attributes")
+    if not isinstance(attributes, dict):
+        return
+    products = attributes.get("products")
+    items = products.get("product") if isinstance(products, dict) else None
+    if not isinstance(items, list):
+        return
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        for field in _RECEIPT_PRODUCT_FLOAT_FIELDS:
+            value = item.get(field)
+            if value is not None:
+                try:
+                    item[field] = float(value)
+                except (TypeError, ValueError):
+                    pass
+
+
 def iter_receipt_files(source_dir: str | Path) -> Iterator[dict[str, Any]]:
     """Yield each receipt-detail JSON document found under ``source_dir``.
 
@@ -79,6 +106,7 @@ def iter_receipt_files(source_dir: str | Path) -> Iterator[dict[str, Any]]:
             continue
         for record in doc if isinstance(doc, list) else [doc]:
             if record and isinstance(record, dict) and record.get("id"):
+                _coerce_receipt_numbers(record)
                 count += 1
                 yield record
             else:
@@ -94,11 +122,19 @@ def receipts_resource(source_dir: str | Path) -> Iterator[dict[str, Any]]:
 
 # --- Loyalty -----------------------------------------------------------------
 def _to_float(value: str | None) -> float | None:
-    """Parse a loyalty amount; blank/invalid cells become ``None``."""
+    """Parse a loyalty amount; blank/invalid cells become ``None``.
+
+    Accepts the French decimal comma ("0,21" -> 0.21): these amounts are cents with
+    no thousands separator, so a lone comma is the decimal point. Without this, a
+    comma value would become ``None`` and silently corrupt the loyalty merge key.
+    """
     if value is None or value.strip() == "":
         return None
+    text = value.strip()
+    if "," in text and "." not in text:
+        text = text.replace(",", ".")
     try:
-        return float(value)
+        return float(text)
     except ValueError:
         return None
 

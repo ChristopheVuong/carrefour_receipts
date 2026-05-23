@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from carrefour_receipts_api.elt.load import _canon, iter_loyalty_rows
+from carrefour_receipts_api.elt.load import _canon, _to_float, iter_loyalty_rows
 
 pytestmark = pytest.mark.fast
 
@@ -58,3 +58,19 @@ def test_key_insensitive_to_float_formatting(tmp_path):
 )
 def test_canon_normalizes_fields(value, expected):
     assert _canon(value) == expected
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        ("0.21", 0.21),
+        ("0,21", 0.21),  # French decimal comma
+        ("3,00", 3.0),
+        ("  1,5 ", 1.5),
+        ("", None),
+        (None, None),
+        ("nan-ish", None),
+    ],
+)
+def test_to_float_handles_comma_decimals(value, expected):
+    assert _to_float(value) == expected

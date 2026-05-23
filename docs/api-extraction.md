@@ -41,14 +41,24 @@ Open <http://127.0.0.1:8000> and pick:
 
 | Endpoint | Flow |
 | --- | --- |
-| `POST /login/browser` | Pops a real browser at the login portal; when you reach your account page it captures the cookies automatically and writes `COOKIES_FILE`. Needs the `scraping` extra (Playwright). |
+| `POST /login/browser` | Pops a real browser at the login portal; when you reach your account page it captures the cookies (writes `COOKIES_FILE`) **and reads your loyalty / Pass card numbers** from the `/api/me` JSON into `SECRETS_FILE`. Needs the `scraping` extra (Playwright). |
 | `GET /login/redirect` | Redirects your current tab to the Carrefour login portal (manual path). |
 | `POST /cookies` | Manual fallback: paste a `cookie:` header (from DevTools → Network) to save it. |
+| `POST /account` | Manual fallback: enter the loyalty / Pass card numbers in the UI form to save them to `SECRETS_FILE`. |
 | `GET /status` | JSON — whether valid cookies are present. |
 
 Cookies are written in the **Netscape format** that the extractor's `curl -b` calls
 expect, at `config.COOKIES_FILE` (default `data/cookies.txt`). Configure the portal URLs
 with `CARREFOUR_LOGIN_URL` / `CARREFOUR_ACCOUNT_URL`.
+
+**Loyalty / Pass card numbers.** These are the API query params for the receipt and loyalty
+endpoints. After login the browser flow queries the authenticated `CARREFOUR_ME_URL`
+(default `https://www.carrefour.fr/api/me`), which returns the account's cards as JSON
+(`{"number": …, "type": "LOYALTY"|"PASS_MASTERCARD"}`), and writes them to
+`config.SECRETS_FILE` (`data/secrets.yml`, git-ignored). If the call returns nothing for a
+card, enter it in the UI's *Loyalty / fidélité card* form. `config.LOYALTY_CARD_NUMBER` /
+`PASS_CARD_NUMBER` resolve **env var first** (`.env` override), then this file — so the
+extractor picks them up on its next run.
 
 **Cloudflare Turnstile.** Turnstile detects ordinary Playwright through the Chrome
 DevTools Protocol `Runtime.enable` leak, so the flow prefers **[patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright)**
