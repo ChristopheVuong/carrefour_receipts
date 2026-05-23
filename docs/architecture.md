@@ -7,7 +7,7 @@ Data flows left to right; each stage is independently runnable.
  Carrefour portal
        │  curl + browser-exported cookies            (api-extraction.md)
        ▼
- JSON receipts + CSV loyalty   ──▶  data/  (git-ignored, PII)
+ JSON receipts + loyalty + Drive orders  ──▶  data/  (git-ignored, PII)
        │  dlt  (carrefour_receipts_api.elt.load)
        ▼
  DuckDB  raw schema            ──▶  carrefour.duckdb
@@ -23,7 +23,7 @@ Data flows left to right; each stage is independently runnable.
 
 | Stage | Code | Output |
 | --- | --- | --- |
-| **Extract** | [user_api_extractor.py](../src/carrefour_receipts_api/user_api_extractor.py) | JSON/CSV under `data/` |
+| **Extract** | [user_api_extractor.py](../src/carrefour_receipts_api/user_api_extractor.py) | JSON under `data/` |
 | **Load (EL)** | [elt/load.py](../src/carrefour_receipts_api/elt/load.py) (dlt) | `raw.*` tables in DuckDB |
 | **Transform (T)** | [transform/](../transform/) (dbt) | star schema + analytics marts |
 | **Process (Python in dbt)** | [matching.py](../src/carrefour_receipts_api/matching.py), [categorization.py](../src/carrefour_receipts_api/categorization.py), [embeddings.py](../src/carrefour_receipts_api/embeddings.py) | imported by the dbt Python models |

@@ -50,6 +50,40 @@ models:
       - name: total_price
         tests: [not_null]
 
+  - name: fct_orders
+    description: "One row per Drive order with totals and payment-method breakdown (the Drive equivalent of fct_receipts)."
+    columns:
+      - name: order_number
+        tests: [not_null, unique]
+      - name: order_date
+        tests: [not_null]
+      - name: total_paid
+        tests: [not_null]
+
+  - name: fct_order_lines
+    description: "One row per Drive order line item, with net price and product categorization (the Drive equivalent of fct_receipt_lines)."
+    columns:
+      - name: order_line_id
+        description: "Unique line key (order_number + order_line_index)."
+        tests: [not_null, unique]
+      - name: order_number
+        description: "FK to fct_orders."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_orders')
+                field: order_number
+      - name: category
+        description: "Keyword-classified category; falls back to 'other' (orders have no per-line VAT)."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["food", "hygiene_beauty", "household", "other"]
+      - name: total_price
+        tests: [not_null]
+
   - name: fct_loyalty_lines
     description: "One row per loyalty (fidélité) line, one-to-one matched to a receipt product line."
     columns:

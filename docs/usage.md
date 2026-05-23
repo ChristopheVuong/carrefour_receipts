@@ -64,32 +64,40 @@ See [api-extraction.md](api-extraction.md) for details on the Cloudflare bypass.
 
 ## 3. Extract your data
 
+Pick the record type with `--type` (receipts are the default):
+
 ```bash
-uv run python -m carrefour_receipts_api.user_api_extractor
+uv run python -m carrefour_receipts_api.user_api_extractor --type receipt
+uv run python -m carrefour_receipts_api.user_api_extractor --type loyalty_operation
+uv run python -m carrefour_receipts_api.user_api_extractor --type order   # Drive orders
 ```
 
-This paginates the receipts API and the monthly loyalty endpoint, writing:
-- `data/{YYYYMMDD}/…_receipts_scroll_N.json` — receipt list pages (one **dated folder
-  per extraction run**)
+This writes JSON under a **dated folder per extraction run**:
+- `data/{YYYYMMDD}/…_receipts_scroll_N.json` — receipt list pages
 - `data/{YYYYMMDD}/…_receipt_{id}_details.json` — individual receipt details
-- `data/{record_type}_ids.csv` — the loyalty/receipt line CSVs (a **fixed, non-dated**
-  path, appended and deduplicated across runs)
+- `data/{YYYYMMDD}/…_loyalty_operations_all.json` — one document **per month**, each
+  carrying a `history` array of loyalty line items
+- `data/{YYYYMMDD}/…_order_{id}_details.json` — individual Drive order details
+
+All three record types are plain JSON — there is no CSV intermediate.
 
 ### Pointing the loader at your files
 
-Each run creates a **new dated folder** for receipts, but you don't chase the date in
-`.env` — set stable paths **once**:
+Each run creates a **new dated folder**, but you don't chase the date in `.env` — point
+both sources at `data` **once**:
 
 ```ini
 RECEIPTS_SOURCE_DIR=data          # parent dir, NOT a single dated subfolder
-LOYALTY_SOURCE_CSV=data/loyalty_operation_ids.csv
+LOYALTY_SOURCE_DIR=data           # loyalty JSON co-locates under data/{YYYYMMDD}/
+ORDERS_SOURCE_DIR=data            # Drive order JSON co-locates there too
 ```
 
-The loader scans `RECEIPTS_SOURCE_DIR` recursively (`rglob("*.json")`), so it picks up
-**every** dated subfolder from **every** run automatically; the `merge` on `id`
-deduplicates overlaps. Likewise the loyalty CSV path is fixed, and the synthetic merge
-key accumulates history in DuckDB across runs. So after the first time, step 3 → step 4
-needs no `.env` change.
+Each resource scans its dir recursively (`rglob("*.json")`) and picks its own docs
+(receipts have an `id`; loyalty months have a `history` array; orders have an
+`attributes.productList`), so they pick up **every** dated subfolder from **every** run
+automatically. Receipts `merge` on `id`, loyalty on the month `_id`, orders on
+`order_number` — accumulating history in DuckDB across runs. So after the first time,
+step 3 → step 4 needs no `.env` change.
 
 ---
 
@@ -139,7 +147,8 @@ make dashboard   # →  http://localhost:8501
 ```
 
 Sections: headline KPIs, monthly spend + rolling average, category breakdown,
-product price trends, quantity series. All filterable by year / month / category.
+product price trends, quantity series. All filterable by year / month / category /
+**channel** (All / store / Drive — "All" sums the two).
 
 See [dashboard.md](dashboard.md) for the Docker variant.
 
@@ -162,29 +171,31 @@ Typical refresh:
 
 ```bash
 make auth-service          # if cookies expired
-uv run python -m carrefour_receipts_api.user_api_extractor   # writes a new data/{YYYYMMDD}/
+uv run python -m carrefour_receipts_api.user_api_extractor --type receipt
+uv run python -m carrefour_receipts_api.user_api_extractor --type loyalty_operation
+uv run python -m carrefour_receipts_api.user_api_extractor --type order
 make build                 # incremental load (recursive glob + merge) + dbt rebuild
 make dashboard
 ```
 
-No `.env` change between runs: with `RECEIPTS_SOURCE_DIR=data` the recursive glob picks
-up the new dated folder, and the merge keys deduplicate against what's already in DuckDB.
+No `.env` change between runs: with `RECEIPTS_SOURCE_DIR=data` / `LOYALTY_SOURCE_DIR=data`
+the recursive globs pick up the new dated folder, and the merge keys deduplicate against
+what's already in DuckDB.
 
 ---
 
 ## 8. Full rebuild from scratch
 
 ```bash
-make clean     # removes carrefour.duckdb and dbt artifacts
+make clean     # removes carrefour.duckdb, dbt artifacts and dlt pipeline state
 # point .env at ALL your archived extracts (or a merged source dir)
 make build
 ```
 
 If you have multiple extract directories (e.g. `data/20240601`, `data/20250101`),
-set `RECEIPTS_SOURCE_DIR` to a parent that contains them all — `iter_receipt_files`
-scans recursively (`rglob("*.json")`). For loyalty, concatenate your historical CSVs
-into one file (with header) and point `LOYALTY_SOURCE_CSV` at it; the merge key
-deduplicates overlapping rows automatically.
+set `RECEIPTS_SOURCE_DIR` / `LOYALTY_SOURCE_DIR` to a parent that contains them all — both
+resources scan recursively (`rglob("*.json")`). The merge keys (receipt `id`, loyalty
+month `_id`) deduplicate overlapping documents automatically.
 
 ---
 
@@ -193,6 +204,7 @@ deduplicates overlapping rows automatically.
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | Extractor returns 403 | Cookies expired | Re-run `make auth-service` → click *Open browser & capture cookies* |
-| `dbt build` fails on `int_loyalty_matched` | `stg_loyalty` empty (loyalty CSV not loaded) | Check `LOYALTY_SOURCE_CSV` points at a real file, then `make elt` |
+| `dbt build` fails on `int_loyalty_matched` | `stg_loyalty` empty (no loyalty JSON loaded) | Run the loyalty extraction (`--type loyalty_operation`), check `LOYALTY_SOURCE_DIR`, then `make elt` |
 | Dashboard shows "marts not found" | `dbt build` not run yet | `make build` |
-| Duplicate loyalty rows in DuckDB | Unlikely; if seen after a schema change to `loyalty_row_key` | `make clean && make build` with all archived files |
+| Duplicate loyalty rows in DuckDB | Unlikely; if seen after a schema change to `loyalty_line_id` | `make clean && make build` with all archived files |
+| `make elt` fails with `Catalog Error: Table … does not exist! Did you mean raw_staging.…?` | A previous dlt load was interrupted, leaving its schema out of sync with DuckDB | `make clean && make build` (clears the dlt pipeline state too) |

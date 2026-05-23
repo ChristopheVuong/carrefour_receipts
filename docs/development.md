@@ -49,7 +49,7 @@ convenience aggregate for local dev and does not change those.
 | `make dashboard` | run the Streamlit dashboard |
 | `make auth-service` | run the FastAPI auth service (browser login → cookies) |
 | `make docker-build` / `make docker-run` | build / run the dashboard container |
-| `make clean` | remove the DuckDB file and dbt artifacts |
+| `make clean` | remove the DuckDB file, dbt artifacts and the dlt pipeline state (full reset) |
 
 ## Pre-commit hooks
 
@@ -74,12 +74,13 @@ pinch: `git commit --no-verify` / `git push --no-verify`.
 ## Loading your real data
 
 The defaults point at committed fixtures. To load your own extracts, either edit `.env`
-(`RECEIPTS_SOURCE_DIR`, `LOYALTY_SOURCE_CSV`) or pass flags:
+(`RECEIPTS_SOURCE_DIR`, `LOYALTY_SOURCE_DIR`) or pass flags (both take a directory of JSON):
 
 ```bash
 uv run python -m carrefour_receipts_api.elt.load \
-    --source data/20250613 \
-    --loyalty data/20250601-carrefour_loyalty.csv \
+    --source data \
+    --loyalty data \
+    --orders data \
     --dataset raw
 ```
 
@@ -118,7 +119,7 @@ defaults in [.env.example](../.env.example):
 | `CARREFOUR_TLS_IMPERSONATE` | `edge101` | curl_cffi browser TLS fingerprint (past Cloudflare) |
 | `DUCKDB_PATH` | `carrefour.duckdb` | DuckDB file (also read by the dbt profile) |
 | `DUCKDB_DATASET` | `raw` | dlt target schema |
-| `RECEIPTS_SOURCE_DIR`, `LOYALTY_SOURCE_CSV` | fixtures | ELT inputs |
+| `RECEIPTS_SOURCE_DIR`, `LOYALTY_SOURCE_DIR`, `ORDERS_SOURCE_DIR` | fixtures | ELT inputs (dirs of JSON) |
 | `FIDELITY_MATCH_THRESHOLD` | `0.85` | fidélité match cutoff |
 | `CATEGORY_MATCH_THRESHOLD` | `0.80` | categorization cutoff |
 | `CATEGORY_USE_EMBEDDINGS` | `false` | use fastembed for categorization |

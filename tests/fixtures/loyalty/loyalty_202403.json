@@ -1,0 +1,25 @@
+{
+  "_id": "202403",
+  "history": [
+    {
+      "operationId": "64070450003",
+      "date": "2024-03-12",
+      "earned": 0.07,
+      "burned": 0.0,
+      "itemLabel": "PAIN MIE COMPLET",
+      "promotionLabel": "",
+      "itemRd": 0.00,
+      "loyaltyOperation": "Paiement en caisse"
+    },
+    {
+      "operationId": "64070450003",
+      "date": "2024-03-12",
+      "earned": 0.25,
+      "burned": 0.0,
+      "itemLabel": "DENTIFRICE MENTHE",
+      "promotionLabel": "",
+      "itemRd": 0.50,
+      "loyaltyOperation": "Paiement en caisse"
+    }
+  ]
+}

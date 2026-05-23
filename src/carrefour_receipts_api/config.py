@@ -70,7 +70,8 @@ CARREFOUR_TLS_IMPERSONATE: str = _get("CARREFOUR_TLS_IMPERSONATE", "edge101")
 DUCKDB_PATH: str = _get("DUCKDB_PATH", "carrefour.duckdb")
 DUCKDB_DATASET: str = _get("DUCKDB_DATASET", "raw")
 RECEIPTS_SOURCE_DIR: str = _get("RECEIPTS_SOURCE_DIR", "tests/fixtures/receipts")
-LOYALTY_SOURCE_CSV: str = _get("LOYALTY_SOURCE_CSV", "tests/fixtures/loyalty/loyalty.csv")
+LOYALTY_SOURCE_DIR: str = _get("LOYALTY_SOURCE_DIR", "tests/fixtures/loyalty")
+ORDERS_SOURCE_DIR: str = _get("ORDERS_SOURCE_DIR", "tests/fixtures/orders")
 
 # Minimum similarity (0..1) for a loyalty item label to be accepted as a match
 # against a receipt product label in the fidélité one-to-one join (dbt Python

@@ -32,8 +32,9 @@ services:
       DUCKDB_PATH: /state/carrefour.duckdb
       DUCKDB_DATASET: raw
       RECEIPTS_SOURCE_DIR: /data/sources
-      # Set this to your actual loyalty CSV filename under data/.
-      LOYALTY_SOURCE_CSV: /data/sources/loyalty_operation_ids.csv
+      # Loyalty months and Drive orders are JSON, co-located with receipts.
+      LOYALTY_SOURCE_DIR: /data/sources
+      ORDERS_SOURCE_DIR: /data/sources
       DLT_PIPELINES_DIR: /state/.dlt
 
   dashboard:

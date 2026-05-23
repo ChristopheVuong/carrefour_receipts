@@ -69,12 +69,14 @@ heuristic (`vat_category`) downstream. Logic lives in
 {% enddocs %}
 
 
-{% docs loyalty_row_key %}
+{% docs loyalty_line_id %}
 Stable, unique grain of a loyalty line. A loyalty line has no natural key
 (`operationId` repeats across an operation's items; `_dlt_id` changes each load), so this
-is a synthetic key — `sha1(content signature | occurrence index)` — computed at load time.
-The `loyalty` source is merged on it, so DuckDB accumulates history across loads even though
-the live API only returns a rolling ~1-year window.
+is a deterministic key — `md5(content signature | occurrence index)` — computed in
+`stg_loyalty` from the unnested `loyalty__history` rows. Same content always yields the same
+key, so it is stable across rebuilds. The `loyalty` source itself is merged on the month
+`_id`, so DuckDB accumulates history across loads even though the live API only returns a
+rolling ~1-year window.
 {% enddocs %}
 
 

@@ -2,7 +2,8 @@
 
 An interactive [Streamlit](https://streamlit.io/) app over the dbt analytics marts:
 headline KPIs, monthly spend with a rolling average, category breakdown, product
-price trends and quantity series — all filterable by year / month / category.
+price trends and quantity series — all filterable by year / month / category /
+**channel** (All / store / Drive; "All" sums the two).
 
 Source: [dashboard/app.py](../src/carrefour_receipts_api/dashboard/app.py). It reads the
 marts (`mart_monthly_spend`, `mart_category_insights`, `mart_product_prices`,

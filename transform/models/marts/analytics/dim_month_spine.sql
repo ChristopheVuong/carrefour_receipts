@@ -1,15 +1,14 @@
--- Contiguous monthly spine from the first to the last receipt month.
+-- Contiguous monthly spine from the first to the last purchase month (store + Drive).
 --
--- `dim_date` only holds *observed* receipt dates, so months without any shopping
--- are missing. Rolling 3/6/12-month averages and year-over-year (lag 12) windows
--- must run over a gap-free month series, otherwise empty months are silently
--- skipped and the windows span the wrong period. All time-series analytics marts
--- left-join onto this spine.
+-- Months without any shopping are otherwise missing. Rolling 3/6/12-month averages
+-- and year-over-year (lag 12) windows must run over a gap-free month series, otherwise
+-- empty months are silently skipped and the windows span the wrong period. All
+-- time-series analytics marts left-join onto this spine (per channel).
 with bounds as (
     select
-        date_trunc('month', min(receipt_date)) as start_month,
-        date_trunc('month', max(receipt_date)) as end_month
-    from {{ ref('fct_receipts') }}
+        date_trunc('month', min(purchase_date)) as start_month,
+        date_trunc('month', max(purchase_date)) as end_month
+    from {{ ref('int_purchases') }}
 ),
 
 months as (

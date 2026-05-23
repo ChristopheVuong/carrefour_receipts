@@ -43,6 +43,43 @@ def _filter_year_month(df: pd.DataFrame, years: list[int], months: list[str]) ->
     return out
 
 
+def _collapse_channel(df: pd.DataFrame, group_keys: list[str], channel: str) -> pd.DataFrame:
+    """Scope a channel-grained mart to one channel, or sum across channels for "All".
+
+    Sums are valid for the additive metrics here (totals, counts, kilograms) and for
+    the rolling *averages* too: an average over a fixed window is linear, so the sum of
+    per-channel rolling averages equals the combined rolling average.
+    """
+    if df.empty or "channel" not in df.columns:
+        return df
+    if channel != "All":
+        return df[df["channel"] == channel].drop(columns=["channel"])
+    numeric = df.select_dtypes("number").columns.tolist()
+    keys = [k for k in group_keys if k in df.columns]
+    return df.groupby(keys, as_index=False, dropna=False)[numeric].sum()
+
+
+def _collapse_prices(df: pd.DataFrame, channel: str) -> pd.DataFrame:
+    """Per-product price view: filter to a channel, or quantity-weight across channels."""
+    if df.empty or "channel" not in df.columns:
+        return df
+    if channel != "All":
+        return df[df["channel"] == channel].drop(columns=["channel"])
+    work = df.copy()
+    work["_weighted"] = work["avg_unit_price"] * work["quantity"]
+    grouped = work.groupby(
+        ["product_label", "subcategory", "year_month"], as_index=False, dropna=False
+    ).agg(
+        _weighted=("_weighted", "sum"),
+        quantity=("quantity", "sum"),
+        line_count=("line_count", "sum"),
+        total_quantity=("total_quantity", "max"),
+    )
+    grouped["avg_unit_price"] = grouped["_weighted"] / grouped["quantity"].replace(0, pd.NA)
+    grouped["is_top_product"] = grouped["total_quantity"] >= 5
+    return grouped.drop(columns=["_weighted"])
+
+
 def main() -> None:
     st.set_page_config(page_title="Carrefour Receipts", page_icon="🧾", layout="wide")
     st.title("🧾 Carrefour Receipts — Analytics")
@@ -68,18 +105,27 @@ def main() -> None:
         sorted(categories["category"].dropna().unique().tolist()) if not categories.empty else []
     )
 
+    channel_values = (
+        sorted(spend["channel"].dropna().unique().tolist()) if "channel" in spend else []
+    )
+
     st.sidebar.header("Filters")
+    sel_channel = st.sidebar.selectbox("Channel", ["All", *channel_values])
     sel_years = st.sidebar.multiselect("Year", all_years, default=all_years)
     sel_months = st.sidebar.multiselect("Month", all_months, default=all_months)
     sel_cats = st.sidebar.multiselect("Category", cat_values, default=cat_values)
 
-    spend_f = _filter_year_month(spend, sel_years, sel_months)
+    spend_f = _filter_year_month(
+        _collapse_channel(spend, ["year_month", "year", "month"], sel_channel),
+        sel_years,
+        sel_months,
+    )
 
     # --- KPI headline -------------------------------------------------------
     c1, c2, c3 = st.columns(3)
     c1.metric("Total paid", f"€{spend_f['total_paid'].sum():,.2f}")
     c2.metric("Immediate discount", f"€{spend_f['immediate_discount'].sum():,.2f}")
-    c3.metric("Receipts", int(spend_f["receipt_count"].sum()))
+    c3.metric("Purchases", int(spend_f["purchase_count"].sum()))
 
     # --- Monthly spend + rolling average ------------------------------------
     st.subheader("Monthly spend")
@@ -94,7 +140,11 @@ def main() -> None:
     # --- Category breakdown -------------------------------------------------
     if not categories.empty:
         st.subheader("Spend by category")
-        cat_f = _filter_year_month(categories, sel_years, sel_months)
+        cat_f = _filter_year_month(
+            _collapse_channel(categories, ["year_month", "category"], sel_channel),
+            sel_years,
+            sel_months,
+        )
         if sel_cats:
             cat_f = cat_f[cat_f["category"].isin(sel_cats)]
         st.bar_chart(cat_f, x="year_month", y="spend", color="category")
@@ -102,7 +152,8 @@ def main() -> None:
     # --- Product price trends ----------------------------------------------
     if not prices.empty:
         st.subheader("Product unit-price trends")
-        top = prices[prices["is_top_product"]] if "is_top_product" in prices else prices
+        prices_c = _collapse_prices(prices, sel_channel)
+        top = prices_c[prices_c["is_top_product"]] if "is_top_product" in prices_c else prices_c
         products = sorted(top["product_label"].dropna().unique().tolist())
         chosen = st.multiselect("Products", products, default=products[:5])
         price_f = _filter_year_month(top[top["product_label"].isin(chosen)], sel_years, sel_months)
@@ -112,7 +163,9 @@ def main() -> None:
     # --- Quantities ---------------------------------------------------------
     if not quantities.empty:
         st.subheader("Quantities")
-        qty_f = _filter_year_month(quantities, sel_years, sel_months)
+        qty_f = _filter_year_month(
+            _collapse_channel(quantities, ["year_month"], sel_channel), sel_years, sel_months
+        )
         st.bar_chart(qty_f, x="year_month", y=["fruit_veg_kg", "total_items"])
 
 

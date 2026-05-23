@@ -1,6 +1,6 @@
 """Product-label categorization (dbt-duckdb Python model).
 
-Classifies each *distinct* receipt product label into a coarse ``category``
+Classifies each *distinct* product label (store receipts + Drive orders) into a coarse ``category``
 (food / hygiene_beauty / household / other) and a finer ``subcategory`` by
 fuzzy-matching it against the curated ``seed_product_categories`` keyword table.
 Logic lives in :mod:`carrefour_receipts_api.categorization` (rapidfuzz only — no
@@ -22,9 +22,17 @@ def model(dbt, session):
         categorize_labels_semantic,
     )
 
-    lines = dbt.ref("stg_receipt_lines").df()
+    import pandas as pd
+
+    receipt_lines = dbt.ref("stg_receipt_lines").df()
+    order_lines = dbt.ref("stg_order_lines").df()
     seed = dbt.ref("seed_product_categories").df()
-    labels = lines[["product_label"]]
+    # Categorize labels from both channels (store receipts + Drive orders); the
+    # categorizer dedups internally, so one row per distinct label is returned.
+    labels = pd.concat(
+        [receipt_lines[["product_label"]], order_lines[["product_label"]]],
+        ignore_index=True,
+    )
 
     out = None
     if config.CATEGORY_USE_EMBEDDINGS:

@@ -15,7 +15,8 @@ from carrefour_receipts_api.elt.load import _to_float, load_all, load_receipts
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = str(REPO_ROOT / "tests" / "fixtures" / "receipts")
-LOYALTY_CSV = str(REPO_ROOT / "tests" / "fixtures" / "loyalty" / "loyalty.csv")
+LOYALTY_DIR = str(REPO_ROOT / "tests" / "fixtures" / "loyalty")
+ORDERS_DIR = str(REPO_ROOT / "tests" / "fixtures" / "orders")
 
 
 @pytest.fixture
@@ -68,11 +69,12 @@ def test_merge_load_is_idempotent(tmp_path):
 
 @pytest.fixture
 def loaded_all(tmp_path) -> Path:
-    """Load receipts + loyalty fixtures into an isolated temporary DuckDB."""
+    """Load receipts + loyalty + orders fixtures into an isolated temporary DuckDB."""
     db = tmp_path / "carrefour.duckdb"
     load_all(
         source_dir=FIXTURES,
-        loyalty_csv=LOYALTY_CSV,
+        loyalty_dir=LOYALTY_DIR,
+        orders_dir=ORDERS_DIR,
         db_path=str(db),
         dataset="raw",
         pipelines_dir=tmp_path / "dlt",
@@ -80,64 +82,132 @@ def loaded_all(tmp_path) -> Path:
     return db
 
 
-def test_load_all_loads_loyalty_table(loaded_all: Path):
+def test_load_all_loads_order_tables(loaded_all: Path):
     con = duckdb.connect(str(loaded_all))
-    assert con.execute("select count(*) from raw.loyalty").fetchone()[0] == 8
-    # Numeric loyalty amounts are typed as floats, not strings.
+    # dlt unnested the flattened order into child tables.
+    # 2 order docs (root) -> 5 line items, 3 payment splits.
+    assert con.execute("select count(*) from raw.orders").fetchone()[0] == 2
+    assert con.execute("select count(*) from raw.orders__lines").fetchone()[0] == 5
+    assert con.execute("select count(*) from raw.orders__payments").fetchone()[0] == 3
+    # Price was pulled out of the nested offers[ean][offerId] dynamic keys.
     cols = {
         r[0]: r[1]
         for r in con.execute(
             "select column_name, data_type from information_schema.columns "
-            "where table_schema='raw' and table_name='loyalty'"
+            "where table_schema='raw' and table_name='orders__lines'"
+        ).fetchall()
+    }
+    assert cols["unit_price"] == "DOUBLE"
+    assert cols["line_total"] == "DOUBLE"
+    banane = con.execute(
+        "select unit_price, line_total from raw.orders__lines where title = 'BANANE BIO'"
+    ).fetchone()
+    assert banane == (1.5, 3.0)
+
+
+def test_orders_merge_is_idempotent(tmp_path):
+    db = tmp_path / "carrefour.duckdb"
+    pdir = tmp_path / "dlt"
+    load_all(FIXTURES, LOYALTY_DIR, ORDERS_DIR, str(db), "raw", pipelines_dir=pdir)
+    load_all(FIXTURES, LOYALTY_DIR, ORDERS_DIR, str(db), "raw", pipelines_dir=pdir)
+
+    con = duckdb.connect(str(db))
+    # merge on order_number => re-running never duplicates orders or their lines.
+    assert con.execute("select count(*) from raw.orders").fetchone()[0] == 2
+    assert con.execute("select count(distinct order_number) from raw.orders").fetchone()[0] == 2
+    assert con.execute("select count(*) from raw.orders__lines").fetchone()[0] == 5
+
+
+def test_load_all_loads_loyalty_tables(loaded_all: Path):
+    con = duckdb.connect(str(loaded_all))
+    # dlt unnested the monthly `history` array into a child table.
+    # 3 month docs (root) -> 9 history line items (incl. one duplicate line).
+    assert con.execute("select count(*) from raw.loyalty").fetchone()[0] == 3
+    assert con.execute("select count(*) from raw.loyalty__history").fetchone()[0] == 9
+    # Numeric amounts are typed as floats (incl. the "0,21" French-comma value).
+    cols = {
+        r[0]: r[1]
+        for r in con.execute(
+            "select column_name, data_type from information_schema.columns "
+            "where table_schema='raw' and table_name='loyalty__history'"
         ).fetchall()
     }
     assert cols["earned"] == "DOUBLE"
     assert cols["item_rd"] == "DOUBLE"
+    # The comma-decimal "0,21" was coerced, not NULLed.
+    banane = con.execute(
+        "select distinct earned from raw.loyalty__history where item_label = 'BANANE BIO'"
+    ).fetchall()
+    assert banane == [(0.21,)]
 
 
 def test_loyalty_merge_is_idempotent(tmp_path):
     db = tmp_path / "carrefour.duckdb"
     pdir = tmp_path / "dlt"
-    load_all(FIXTURES, LOYALTY_CSV, str(db), "raw", pipelines_dir=pdir)
-    load_all(FIXTURES, LOYALTY_CSV, str(db), "raw", pipelines_dir=pdir)
+    load_all(FIXTURES, LOYALTY_DIR, ORDERS_DIR, str(db), "raw", pipelines_dir=pdir)
+    load_all(FIXTURES, LOYALTY_DIR, ORDERS_DIR, str(db), "raw", pipelines_dir=pdir)
 
     con = duckdb.connect(str(db))
-    # loyalty merges on the synthetic loyalty_row_key => re-running the same CSV
-    # never duplicates rows, and the key is unique.
-    assert con.execute("select count(*) from raw.loyalty").fetchone()[0] == 8
-    assert con.execute("select count(distinct loyalty_row_key) from raw.loyalty").fetchone()[0] == 8
+    # loyalty merges on the month `_id` => re-running the same files never
+    # duplicates months or their history lines.
+    assert con.execute("select count(*) from raw.loyalty").fetchone()[0] == 3
+    assert con.execute("select count(distinct _id) from raw.loyalty").fetchone()[0] == 3
+    assert con.execute("select count(*) from raw.loyalty__history").fetchone()[0] == 9
 
 
-def test_loyalty_merge_accumulates_overlapping_snapshots(tmp_path):
-    """A fresh ~1-year extract must not erase prior history (the merge fix).
+def _write_loyalty_month(directory: Path, month: str, label: str) -> None:
+    """Write a minimal one-line loyalty month doc (``_id`` + ``history``)."""
+    import json
 
-    Loads an older snapshot, then a newer one that overlaps it, and asserts the
-    table holds the *union* with the overlap deduped — proving DuckDB is the
-    durable archive even though the live API only returns a rolling window.
+    directory.mkdir(parents=True, exist_ok=True)
+    doc = {
+        "_id": month,
+        "history": [
+            {
+                "operationId": month,
+                "date": f"{month[:4]}-{month[4:]}-15",
+                "earned": 0.10,
+                "burned": 0.0,
+                "itemLabel": label,
+                "promotionLabel": "",
+                "itemRd": 0.0,
+                "loyaltyOperation": "Paiement en caisse",
+            }
+        ],
+    }
+    (directory / f"loyalty_{month}.json").write_text(json.dumps(doc), encoding="utf-8")
+
+
+def test_loyalty_merge_accumulates_across_months(tmp_path):
+    """A fresh ~1-year extract must not erase prior history (the month-grain merge).
+
+    Loads an older window, then a newer overlapping one, and asserts the table holds
+    the union of months — proving DuckDB is the durable archive even though the live
+    API only returns a rolling window. The overlapping month is replaced, not wiped.
     """
-    db = tmp_path / "carrefour.duckdb"
-    pdir = tmp_path / "dlt"
-    header = "operationId,date,earned,burned,itemLabel,promotionLabel,itemRd,loyaltyOperation\n"
-    old_row = "111,2023-01-15,0.21,0.0,BANANE BIO,,0.10,Paiement en caisse\n"
-    overlap_row = "222,2024-01-15,0.05,0.0,LAIT DEMI-ECREME 1L,,0.00,Paiement en caisse\n"
-    new_row = "333,2024-06-20,0.30,0.0,POMME GALA,,0.15,Paiement en caisse\n"
-
-    snapshot_a = tmp_path / "loyalty_a.csv"  # older window: old + overlap
-    snapshot_a.write_text(header + old_row + overlap_row, encoding="utf-8")
-    snapshot_b = tmp_path / "loyalty_b.csv"  # newer window: overlap + new
-    snapshot_b.write_text(header + overlap_row + new_row, encoding="utf-8")
-
     from carrefour_receipts_api.elt.load import load_loyalty
 
-    load_loyalty(str(snapshot_a), str(db), "raw", pipelines_dir=pdir)
-    load_loyalty(str(snapshot_b), str(db), "raw", pipelines_dir=pdir)
+    db = tmp_path / "carrefour.duckdb"
+    pdir = tmp_path / "dlt"
+
+    dir_a = tmp_path / "win_a"  # older window: 202301 + 202401(v1)
+    _write_loyalty_month(dir_a, "202301", "BANANE BIO")
+    _write_loyalty_month(dir_a, "202401", "LAIT V1")
+    dir_b = tmp_path / "win_b"  # newer window: 202401(v2) + 202406
+    _write_loyalty_month(dir_b, "202401", "LAIT V2")
+    _write_loyalty_month(dir_b, "202406", "POMME GALA")
+
+    load_loyalty(str(dir_a), str(db), "raw", pipelines_dir=pdir)
+    load_loyalty(str(dir_b), str(db), "raw", pipelines_dir=pdir)
 
     con = duckdb.connect(str(db))
-    # union of {old, overlap, new} = 3 rows; the overlap appears once, the older
-    # month survived the second load (no replace wipe).
-    assert con.execute("select count(*) from raw.loyalty").fetchone()[0] == 3
-    labels = {r[0] for r in con.execute("select item_label from raw.loyalty").fetchall()}
-    assert labels == {"BANANE BIO", "LAIT DEMI-ECREME 1L", "POMME GALA"}
+    # months: union {202301, 202401, 202406}; the older 202301 survived the 2nd load.
+    months = {r[0] for r in con.execute("select _id from raw.loyalty").fetchall()}
+    assert months == {"202301", "202401", "202406"}
+    # 202401 was replaced by the newer window's version (v2), not duplicated.
+    labels = {r[0] for r in con.execute("select item_label from raw.loyalty__history").fetchall()}
+    assert labels == {"BANANE BIO", "LAIT V2", "POMME GALA"}
+    assert con.execute("select count(*) from raw.loyalty__history").fetchone()[0] == 3
 
 
 @pytest.mark.parametrize(

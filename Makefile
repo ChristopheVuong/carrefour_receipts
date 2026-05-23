@@ -49,6 +49,7 @@ docker-build:  ## Build the dashboard Docker image
 docker-run:  ## Run the dashboard container against the local carrefour.duckdb
 	docker run --rm -p 8501:8501 -v "$(PWD)/carrefour.duckdb:/data/carrefour.duckdb:ro" carrefour-dashboard
 
-clean:  ## Remove the local DuckDB file and dbt artifacts
+clean:  ## Remove the local DuckDB file, dbt artifacts and the dlt pipeline state
 	rm -f carrefour.duckdb carrefour.duckdb.wal
 	rm -rf transform/target transform/dbt_packages transform/logs
+	rm -rf "$(HOME)/.dlt/pipelines/carrefour"

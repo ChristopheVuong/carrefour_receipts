@@ -120,6 +120,9 @@ class CarrefourBaseExtractor(BaseExtractor):
     REFERER_URL = ""
     RECORD_TYPE = ""
     PARAM_KEYS = []
+    # Two-phase types (receipts, orders) list IDs then fetch per-ID details. Loyalty is
+    # single-phase: fetch_paginated_data already writes the complete monthly history JSON.
+    NEEDS_DETAIL_FETCH = True
 
     def __init__(self, cookies_file: str = COOKIES_FILE, dst_folder: str = DATA_DIRECTORY) -> None:
         """
@@ -313,37 +316,25 @@ class CarrefourBaseExtractor(BaseExtractor):
         else:
             logger.warning(f"No {self.__class__.RECORD_TYPE} IDs found.")
 
+    # The hooks below drive the two-phase (list IDs -> fetch details) flow. Single-phase
+    # extractors (NEEDS_DETAIL_FETCH = False) never call them; the base defaults make the
+    # ID/CSV phase opt-in instead of forcing every subclass to implement dead methods.
     @classmethod
-    @abstractmethod
     def append_row_data(
         cls, item: dict[str, Any], rows: list[list[str]], headers: list[str], criterion2: str
     ) -> None:
-        """
-        Extract row data from the item and append record ids in inventory.
-        """
-        pass
+        """Extract row data from ``item`` and append record ids to ``rows``."""
+        raise NotImplementedError(f"{cls.__name__} does not implement the ID-list phase.")
 
     @classmethod
-    @abstractmethod
     def get_list_headers(cls) -> list[str]:
-        """
-        Get headers for the list of records in a sheet.
-        Returns:
-            Dict[str, Any]: Headers for the receipt list.
-        """
-        return []
+        """Headers for the record-list CSV (two-phase extractors only)."""
+        raise NotImplementedError(f"{cls.__name__} does not implement the ID-list phase.")
 
     @classmethod
-    @abstractmethod
     def check_refs(cls, params: dict[str, Any]) -> None:
-        """
-        Validate required parameters.
-        Args:
-            params (Dict[str, Any]): Parameters to validate.
-        Raises:
-            ValueError: If any required parameter is missing.
-        """
-        pass
+        """Validate required references for the per-ID detail fetch (two-phase only)."""
+        raise NotImplementedError(f"{cls.__name__} does not implement the detail phase.")
 
     @staticmethod
     def remove_duplicates_from_list(file_path: str) -> None:
@@ -563,6 +554,9 @@ class CarrefourLoyaltyExtractor(CarrefourBaseExtractor):
     PARAM_KEYS = ["loyaltyCardNumber", "loyaltyCardType"]
     API_URL = "https://www.carrefour.fr/api/user/secured/loyalty/transactions"
     API_URL_INDIV = "https://www.carrefour.fr/api/user/secured/loyalty/transactions"
+    # Single-phase: fetch_paginated_data writes the complete monthly history JSON, which
+    # the ELT loads directly. No ID-list/detail phase (no CSV), so no list-hook overrides.
+    NEEDS_DETAIL_FETCH = False
 
     def fetch_paginated_data(
         self,
@@ -642,47 +636,6 @@ class CarrefourLoyaltyExtractor(CarrefourBaseExtractor):
             return current_date.replace(year=current_date.year + 1, month=1)
         return current_date.replace(month=current_date.month + 1)
 
-    @classmethod
-    def append_row_data(
-        cls,
-        item: dict[str, Any],
-        rows: list[list[str]],
-        headers: list[str],
-        criterion2: str,
-    ):
-        """
-        Append record ids in inventory.
-        """
-        if "history" in item:
-            for op in item["history"]:
-                rows.append(
-                    [
-                        op.get(headers[0]),
-                        criterion2,  # a criterion by default the extraction date
-                    ]
-                )
-
-    @classmethod
-    def get_list_headers(cls) -> list[str]:
-        """
-        Get headers for the record list.
-        Returns:
-            Dict[str, Any]: Headers for the receipt list.
-        """
-        return ["operationId"]
-
-    @classmethod
-    def check_refs(cls, params: dict[str, Any]) -> None:
-        """
-        Validate required references.
-        Args:
-            params (Dict[str, Any]): Parameters to validate.
-        Raises:
-            ValueError: If any required parameter is missing.
-        """
-        required_params = ["operationId"]
-        check_keys(params, required_params)
-
 
 def main(record_type: str):
     """
@@ -712,6 +665,11 @@ def main(record_type: str):
         extractor.fetch_paginated_data(
             extractor.__class__.API_URL, params, max_scrolls=max_scrolls, verbose=False
         )
+
+    # Steps 2 & 3 (two-phase types only): list IDs to a CSV, then fetch per-ID details.
+    # Loyalty is single-phase — fetch_paginated_data already wrote the full history JSON.
+    if not extractor.NEEDS_DETAIL_FETCH:
+        return
 
     # Step 2: Extract IDs
     extractor.extract_ids(
@@ -806,4 +764,14 @@ class CarrefourDataExtractorFactory:
 
 # Main execution
 if __name__ == "__main__":
-    main(record_type="receipt")
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Extract Carrefour data via the hidden API.")
+    parser.add_argument(
+        "--type",
+        choices=["receipt", "order", "loyalty_operation"],
+        default="receipt",
+        help="Record type to extract (default: receipt).",
+    )
+    args = parser.parse_args()
+    main(record_type=args.type)

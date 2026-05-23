@@ -44,19 +44,48 @@ means it installs on macOS x86_64/Intel, where recent torch has no wheels. Insta
 the `ml` extra. On Intel Macs, `onnxruntime` is pinned `<1.24` (see `pyproject.toml`
 `[tool.uv]`).
 
-## ELT — Loyalty merge key — [elt/load.py](../src/carrefour_receipts_api/elt/load.py)
+## ELT — Loyalty merge & line key
 
-A loyalty line has no natural key (`operationId` repeats across an operation's items; dlt's
-`_dlt_id` changes every load), so the loader derives a deterministic
-`loyalty_row_key = sha1(signature | occurrence)`: the signature (all business fields, floats
-canonicalised so `"0.10"` == `"0.1"`) dedups identical re-extracts, and the occurrence index
-keeps genuinely duplicate lines distinct. The `loyalty` resource is loaded with dlt `merge` on
-this key, so DuckDB **accumulates** history across loads — necessary because the API only
-returns a rolling ~1-year window (see [api-extraction.md](api-extraction.md)).
+**Load grain (dlt):** the loyalty extract is one JSON document **per month** (`_id` = `YYYYMM`)
+carrying a `history` array. dlt unnests `history` into the child table `raw.loyalty__history`,
+and the `loyalty` resource `merge`s on the month `_id`
+([elt/load.py](../src/carrefour_receipts_api/elt/load.py)). So reloading a month replaces its
+lines while older months (absent from a fresh ~1-year extract) are kept — DuckDB **accumulates**
+history across loads, necessary because the API only returns a rolling ~1-year window (see
+[api-extraction.md](api-extraction.md)).
 
-> **Migration caveat:** the key is computed at load time, not stored in the CSV. Changing
-> `_LOYALTY_KEY_FIELDS` or `_canon` invalidates every key → drop `raw.loyalty`, wipe the dlt
-> state, and reload.
+**Line key (dbt):** a loyalty line has no natural key (`operationId` repeats across an
+operation's items; dlt's `_dlt_id` changes every load), so `stg_loyalty` derives a deterministic
+`loyalty_line_id = md5(signature | occurrence)` from the unnested rows: the signature (all
+business fields, amounts rounded so `0.10` == `0.1`) plus a `row_number()` occurrence keeps
+genuinely duplicate lines distinct. Same content always yields the same key, so it is stable
+across rebuilds.
+
+> **Migration caveat:** the line key is recomputed by dbt each build (not stored). Changing the
+> signature columns in [stg_loyalty.sql](../transform/models/staging/stg_loyalty.sql) changes
+> every `loyalty_line_id` — harmless on a full `make build`, but anything that pinned old keys
+> must be rebuilt.
+
+## ELT — Drive orders flatten
+
+Drive order JSON nests each line's price under **dynamic dict keys**
+(`attributes.offers[ean][offerId].attributes.price`), which dlt can't unnest into clean tables.
+So `_flatten_order` ([elt/load.py](../src/carrefour_receipts_api/elt/load.py)) reshapes each order
+in Python into `{header, payments[], lines[]}` (pulling out `unit_price`, `line_total`,
+`immediate_discount`), and the `orders` resource `merge`s on `order_number`; dlt then unnests
+`lines` → `raw.orders__lines` and `payments` → `raw.orders__payments`. Orders carry **no per-line
+VAT**, so `stg_order_lines.vat_percentage` is null and the VAT category fallback is `other` — the
+real category comes from the keyword classification (`int_product_categorized`, which now sees
+both receipt and order labels).
+
+## Marts — store + Drive unified by `channel`
+
+The star schema keeps **separate facts** (`fct_receipts`/`fct_receipt_lines` and
+`fct_orders`/`fct_order_lines`), then unions them line- and order-grain into `int_purchase_lines`
+/ `int_purchases` tagged with a `channel` (`store` | `drive`). The four analytics marts read those
+unions, so every time series is **per (month, channel)** — a BI layer (the dashboard) filters to a
+channel or sums across them for an all-channel total. Composite grains are enforced by singular
+tests under [transform/tests/](../transform/tests/) (no `dbt_utils` dependency).
 
 ## Where each runs
 

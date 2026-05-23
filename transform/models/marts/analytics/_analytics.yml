@@ -13,25 +13,35 @@ models:
 
   - name: mart_monthly_spend
     description: >
-      Monthly spend KPIs: total paid, immediate discount and receipt count, with
-      rolling 3/6/12-month averages and year-over-year deltas. One row per month.
+      Monthly spend KPIs per channel: total paid, immediate discount and purchase
+      count, with rolling 3/6/12-month averages and year-over-year deltas. One row per
+      (year_month, channel) — grain enforced by assert_monthly_spend_grain.
     columns:
       - name: year_month
-        tests: [not_null, unique]
+        tests: [not_null]
+      - name: channel
+        description: "'store' (in-store receipts) or 'drive' (online orders)."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["store", "drive"]
       - name: total_paid
-        description: "Sum of receipt totals for the month (0 when no shopping)."
+        description: "Sum of purchase totals for the month/channel (0 when no shopping)."
         tests: [not_null]
       - name: total_paid_roll_3m
-        description: "Trailing 3-month average of total_paid (partial at the series start)."
+        description: "Trailing 3-month average of total_paid per channel (partial at the start)."
       - name: yoy_pct
         description: "Year-over-year change in total_paid; NULL until 13+ months of history."
 
   - name: mart_category_insights
     description: >
-      Monthly spend by category with bio, non-food (VAT 20%) and meat-vs-plant
-      breakdowns. One row per (year_month, category).
+      Monthly spend by category and channel with bio, non-food (VAT 20%) and
+      meat-vs-plant breakdowns. One row per (year_month, category, channel).
     columns:
       - name: year_month
+        tests: [not_null]
+      - name: channel
         tests: [not_null]
       - name: category
         tests:
@@ -40,18 +50,20 @@ models:
               arguments:
                 values: ["food", "hygiene_beauty", "household", "other"]
       - name: spend
-        description: "Net spend (after immediate discount) for the category that month."
+        description: "Net spend (after immediate discount) for the category that month/channel."
         tests: [not_null]
 
   - name: mart_product_prices
     description: >
-      Per-product monthly average unit price for price-trend analysis, with flags
-      for frequently bought products and staple food baskets. One row per
-      (product_label, year_month).
+      Per-product monthly average unit price per channel, with flags for frequently
+      bought products and staple food baskets. One row per (product_label, year_month,
+      channel).
     columns:
       - name: product_label
         tests: [not_null]
       - name: year_month
+        tests: [not_null]
+      - name: channel
         tests: [not_null]
       - name: is_top_product
         description: "True when the product's total quantity over the window clears the charting cutoff."
@@ -59,11 +71,14 @@ models:
 
   - name: mart_quantities
     description: >
-      Monthly quantity KPIs: fruit/veg kilograms, total items, and rolling hygiene /
-      detergent consumption. One row per month (over the spine).
+      Monthly quantity KPIs per channel: fruit/veg kilograms, total items, and rolling
+      hygiene / detergent consumption. One row per (year_month, channel) — grain
+      enforced by assert_quantities_grain.
     columns:
       - name: year_month
-        tests: [not_null, unique]
+        tests: [not_null]
+      - name: channel
+        tests: [not_null]
       - name: total_items
-        description: "Total item quantity bought in the month (0 when no shopping)."
+        description: "Total item quantity bought in the month/channel (0 when no shopping)."
         tests: [not_null]

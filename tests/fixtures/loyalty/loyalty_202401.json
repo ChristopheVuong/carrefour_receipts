@@ -1,0 +1,45 @@
+{
+  "_id": "202401",
+  "history": [
+    {
+      "operationId": "64070450001",
+      "date": "2024-01-15",
+      "earned": "0,21",
+      "burned": 0.0,
+      "itemLabel": "BANANE BIO",
+      "promotionLabel": "",
+      "itemRd": 0.10,
+      "loyaltyOperation": "Paiement en caisse"
+    },
+    {
+      "operationId": "64070450001",
+      "date": "2024-01-15",
+      "earned": "0,21",
+      "burned": 0.0,
+      "itemLabel": "BANANE BIO",
+      "promotionLabel": "",
+      "itemRd": 0.10,
+      "loyaltyOperation": "Paiement en caisse"
+    },
+    {
+      "operationId": "64070450001",
+      "date": "2024-01-15",
+      "earned": 0.05,
+      "burned": 0.0,
+      "itemLabel": "LAIT DEMI-ECREME 1L",
+      "promotionLabel": "",
+      "itemRd": 0.00,
+      "loyaltyOperation": "Paiement en caisse"
+    },
+    {
+      "operationId": "64070450001",
+      "date": "2024-01-15",
+      "earned": 0.00,
+      "burned": 0.0,
+      "itemLabel": "LIQUIDE VAISSELLE 500 ML",
+      "promotionLabel": "",
+      "itemRd": 0.30,
+      "loyaltyOperation": "Paiement en caisse"
+    }
+  ]
+}

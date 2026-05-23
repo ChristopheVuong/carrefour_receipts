@@ -1,0 +1,35 @@
+{
+  "_id": "202402",
+  "history": [
+    {
+      "operationId": "64070450002",
+      "date": "2024-02-20",
+      "earned": 0.18,
+      "burned": 0.0,
+      "itemLabel": "POMME GALA",
+      "promotionLabel": "",
+      "itemRd": 0.00,
+      "loyaltyOperation": "Paiement en caisse"
+    },
+    {
+      "operationId": "64070450002",
+      "date": "2024-02-20",
+      "earned": 0.11,
+      "burned": 0.0,
+      "itemLabel": "YAOURT NATURE X 8",
+      "promotionLabel": "",
+      "itemRd": 0.15,
+      "loyaltyOperation": "Paiement en caisse"
+    },
+    {
+      "operationId": "64070450002",
+      "date": "2024-02-20",
+      "earned": 0.00,
+      "burned": 3.0,
+      "itemLabel": "ART RAYON FIDELITE",
+      "promotionLabel": "Cagnotte fidelite",
+      "itemRd": 0.00,
+      "loyaltyOperation": "Avantages exceptionnels"
+    }
+  ]
+}

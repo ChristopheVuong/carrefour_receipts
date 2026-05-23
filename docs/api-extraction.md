@@ -88,14 +88,21 @@ extractor from the **same IP** used to load the site.
 ## Modules
 
 - [user_api_extractor.py](../src/carrefour_receipts_api/user_api_extractor.py) — the
-  extractors. A small factory builds the right one per record type:
+  extractors. A small factory builds the right one per record type (choose with `--type`):
   - `CarrefourReceiptExtractor` — in-store receipts,
   - `CarrefourOrderExtractor` — online (Drive) orders,
   - `CarrefourLoyaltyExtractor` — monthly loyalty operations.
 
-  Each handles pagination (`scrollHash`), fetches the list of IDs, then fetches details
-  per ID and writes JSON into `data/{YYYYMMDD}/`. Logging is structured (structlog) — set
-  `LOG_JSON=true` for machine-readable output.
+  Receipts/orders are **two-phase** (paginate `scrollHash` → list IDs → fetch per-ID
+  details). Loyalty is **single-phase**: each month is fetched whole as one JSON document
+  (`_id` = `YYYYMM`) carrying a `history` array — no ID list, no CSV. All write JSON into
+  `data/{YYYYMMDD}/`. Logging is structured (structlog) — set `LOG_JSON=true` for
+  machine-readable output.
+
+> **Drive orders nest line prices behind dynamic dict keys**
+> (`attributes.offers[ean][offerId].attributes.price`), which dlt can't unnest. The ELT
+> loader flattens each order in Python first (one record per line); see the loyalty/orders
+> merge keys in [processing.md](processing.md).
 
 > **Loyalty's rolling 1-year window.** The loyalty endpoint only returns roughly the last
 > year, so each extract is a moving snapshot, not the full history. The loader absorbs this by
@@ -107,12 +114,13 @@ extractor from the **same IP** used to load the site.
 ```bash
 uv sync --extra scraping            # only if you need the browser fallbacks
 # put cookies in data/cookies.txt and credentials in data/secrets.yml, then:
-uv run python -m carrefour_receipts_api.user_api_extractor
+uv run python -m carrefour_receipts_api.user_api_extractor --type receipt
+uv run python -m carrefour_receipts_api.user_api_extractor --type loyalty_operation
 ```
 
 ## Output → next stage
 
-The JSON receipts and the loyalty CSV are the input to the ELT loader. See
+The receipt, loyalty and order JSON files are the input to the ELT loader. See
 [development.md](development.md) for loading them into DuckDB and
 [architecture.md](architecture.md) for the overall flow.
 
@@ -120,5 +128,10 @@ The JSON receipts and the loyalty CSV are the input to the ELT loader. See
 
 - **Receipts**: `id` (`gln_dateKey_receiptNumber`), `dateKey`, store, totals, plus nested
   arrays — products, VATs, payment splits, coupons — which dlt unnests into child tables.
-- **Loyalty**: one row per operation — `date`, `itemLabel`, `earned`, `burned`, `itemRd`
-  (item discount), `loyaltyOperation`.
+- **Loyalty**: one document per month (`_id` = `YYYYMM`) with a `history` array; each line
+  has `date`, `itemLabel`, `earned`, `burned`, `itemRd` (item discount), `loyaltyOperation`.
+  dlt unnests `history` into the `loyalty__history` child table.
+- **Orders (Drive)**: one document per order (`orderNumber`), with header (date, totals,
+  slot, `paymentInfos`) and `productList.categories[].products[]` lines; the price sits under
+  dynamic `offers[ean][offerId]` keys. The loader flattens this into a clean
+  `{header, payments[], lines[]}` doc; dlt unnests `lines` → `orders__lines`.

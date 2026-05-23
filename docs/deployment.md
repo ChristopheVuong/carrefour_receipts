@@ -30,7 +30,8 @@ points dlt's state there).
 ```bash
 # 0. (host) extract fresh data — needs a browser; see usage.md
 make auth-service
-uv run python -m carrefour_receipts_api.user_api_extractor
+uv run python -m carrefour_receipts_api.user_api_extractor --type receipt
+uv run python -m carrefour_receipts_api.user_api_extractor --type loyalty_operation
 
 # 1. build the marts in a container (dlt load + dbt build) into the shared volume
 docker compose -f docker-compose.batch.yml run --rm builder
@@ -47,8 +48,8 @@ pipeline's status code.
 The named volume `carrefour_state` holds **both** `carrefour.duckdb` and the dlt state
 (`.dlt/`). `DUCKDB_PATH` is read by both the EL (`config.DUCKDB_PATH`) and the dbt profile
 (`{{ env_var('DUCKDB_PATH') }}` in [transform/profiles.yml](../transform/profiles.yml)), so the
-DB path has a single source of truth. Set `LOYALTY_SOURCE_CSV` in
-[docker-compose.batch.yml](../docker-compose.batch.yml) to your actual loyalty CSV filename.
+DB path has a single source of truth. Set `LOYALTY_SOURCE_DIR` (and `RECEIPTS_SOURCE_DIR`) in
+[docker-compose.batch.yml](../docker-compose.batch.yml) to your data directory.
 
 A named volume (not a single-file bind mount) is used on purpose: bind-mounting a not-yet-existing
 `carrefour.duckdb` would make Docker create a *directory* by that name and break the build.
