@@ -120,7 +120,6 @@ defaults in [.env.example](../.env.example):
 | `DUCKDB_PATH` | `carrefour.duckdb` | DuckDB file (also read by the dbt profile) |
 | `DUCKDB_DATASET` | `raw` | dlt target schema |
 | `RECEIPTS_SOURCE_DIR`, `LOYALTY_SOURCE_DIR`, `ORDERS_SOURCE_DIR` | fixtures | ELT inputs (dirs of JSON) |
-| `FIDELITY_MATCH_THRESHOLD` | `0.85` | fidélité match cutoff |
 | `CATEGORY_MATCH_THRESHOLD` | `0.80` | categorization cutoff |
 | `CATEGORY_USE_EMBEDDINGS` | `false` | use fastembed for categorization |
 | `LOG_LEVEL`, `LOG_JSON` | `INFO`, `false` | logging level / JSON output |

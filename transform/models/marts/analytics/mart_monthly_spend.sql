@@ -9,9 +9,10 @@ with monthly as (
     select
         strftime(purchase_date, '%Y-%m') as year_month,
         channel,
-        sum(total_paid)                  as total_paid,
-        sum(total_immediate_discount)    as immediate_discount,
-        count(*)                         as purchase_count
+        sum(total_paid)                      as total_paid,
+        sum(total_before_immediate_discount) as total_before_immediate_discount,
+        sum(immediate_discount)              as immediate_discount,
+        count(*)                             as purchase_count
     from {{ ref('int_purchases') }}
     group by 1, 2
 ),
@@ -27,9 +28,10 @@ spine as (
         s.year,
         s.month,
         c.channel,
-        coalesce(m.total_paid, 0)         as total_paid,
-        coalesce(m.immediate_discount, 0) as immediate_discount,
-        coalesce(m.purchase_count, 0)     as purchase_count
+        coalesce(m.total_paid, 0)            as total_paid,
+        coalesce(m.total_before_immediate_discount, 0) as total_before_immediate_discount,
+        coalesce(m.immediate_discount, 0)    as immediate_discount,
+        coalesce(m.purchase_count, 0)        as purchase_count
     from {{ ref('dim_month_spine') }} s
     cross join channels c
     left join monthly m
@@ -42,6 +44,7 @@ select
     month,
     channel,
     total_paid,
+    total_before_immediate_discount,
     immediate_discount,
     purchase_count,
     avg(total_paid) over w3                          as total_paid_roll_3m,

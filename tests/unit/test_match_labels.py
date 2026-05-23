@@ -1,23 +1,16 @@
-"""Unit tests for the loyalty (fidélité) label-matching helpers.
+"""Unit tests for the label-matching helpers.
 
-The *production* fidélité join is the dbt Python model ``int_loyalty_matched``,
-which calls :func:`carrefour_receipts_api.matching.match_loyalty_to_receipts`
-(one-to-one Hungarian assignment over rapidfuzz similarity). These tests cover:
+``preprocess`` is the shared rapidfuzz processor used by the product categorization
+model; ``fuzzy_match`` is the generic best-match helper. These tests cover:
 
   - ``preprocess`` (diacritics / casing normalization),
   - ``fuzzy_match`` (rapidfuzz best match above a threshold),
-  - ``match_loyalty_to_receipts`` (the one-to-one guarantee),
   - the fastembed semantic encoder (``slow``; skipped without the ``ml`` extra).
 """
 
-import pandas as pd
 import pytest
 
-from carrefour_receipts_api.matching import (
-    fuzzy_match,
-    match_loyalty_to_receipts,
-    preprocess,
-)
+from carrefour_receipts_api.matching import fuzzy_match, preprocess
 
 # Loyalty label -> the receipt product label it should resolve to (mirrors the
 # committed loyalty/receipt fixtures used by the dbt fidélité join).
@@ -62,61 +55,6 @@ def test_fuzzy_match_returns_none_below_threshold():
         fuzzy_match("ART RAYON FIDELITE", RECEIPT_LABELS, processor=preprocess, threshold=80)
         is None
     )
-
-
-@pytest.mark.fast
-def test_match_loyalty_to_receipts_is_one_to_one():
-    """Two same-day loyalty lines both closest to one receipt label must NOT both
-    take it — the Hungarian assignment spreads them across distinct receipt lines."""
-    loyalty = pd.DataFrame(
-        {
-            "loyalty_line_id": ["L1", "L2"],
-            "loyalty_date": ["2024-01-15", "2024-01-15"],
-            "item_label": ["BANANE BIO", "BANANE BIO"],  # identical -> would collide if greedy
-        }
-    )
-    receipt_lines = pd.DataFrame(
-        {
-            "receipt_date": ["2024-01-15", "2024-01-15"],
-            "line_dlt_key": ["r1", "r2"],
-            "product_label": ["BANANES BIO", "BANANE BIOLOGIQUE"],
-        }
-    )
-
-    result = match_loyalty_to_receipts(loyalty, receipt_lines, threshold=0.5)
-
-    matched = result.dropna(subset=["matched_line_id"])
-    assert len(matched) == 2  # both loyalty lines matched
-    # one-to-one: each receipt line claimed at most once
-    assert matched["matched_line_id"].nunique() == 2
-    assert set(matched["matched_line_id"]) == {"r1", "r2"}
-
-
-@pytest.mark.fast
-def test_match_loyalty_to_receipts_respects_threshold_and_dates():
-    """Below-threshold pairs and loyalty lines with no same-day receipt stay unmatched."""
-    loyalty = pd.DataFrame(
-        {
-            "loyalty_line_id": ["L1", "L2"],
-            "loyalty_date": ["2024-01-15", "2024-02-20"],  # L2 has no same-day receipt
-            "item_label": ["ZZZ UNRELATED", "POMME GALA"],
-        }
-    )
-    receipt_lines = pd.DataFrame(
-        {
-            "receipt_date": ["2024-01-15"],
-            "line_dlt_key": ["r1"],
-            "product_label": ["BANANES BIO"],
-        }
-    )
-
-    result = match_loyalty_to_receipts(loyalty, receipt_lines, threshold=0.85)
-
-    # L1 scored against r1 but below threshold -> no match; L2 absent (no same-day receipt).
-    assert "L2" not in set(result["loyalty_line_id"])
-    l1 = result[result["loyalty_line_id"] == "L1"]
-    assert len(l1) == 1
-    assert l1["matched_line_id"].isna().all()
 
 
 @pytest.mark.slow

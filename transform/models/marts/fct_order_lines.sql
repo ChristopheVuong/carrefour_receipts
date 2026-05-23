@@ -25,7 +25,8 @@ select
     l.weight,
     l.unit_price,
     l.total_price,
-    l.immediate_discount,
+    -- Drive orders already store the immediate discount as a positive amount saved.
+    coalesce(l.immediate_discount, 0)                 as immediate_discount,
     l.total_price - coalesce(l.immediate_discount, 0) as total_after_discount
 from lines l
 left join categorized c

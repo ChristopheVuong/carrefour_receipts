@@ -43,9 +43,10 @@ from carrefour_receipts_api.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# Loyalty history fields that hold numeric amounts (coerced to float|None so dlt
-# types them DOUBLE and the French decimal comma "0,21" doesn't become NULL).
-_LOYALTY_NUMERIC = ("earned", "burned", "itemRd")
+# Loyalty history fields that hold numeric amounts (coerced to float so dlt types them
+# DOUBLE uniformly — burned is int on some rows, float on others, which would otherwise
+# make dlt split it into a variant column).
+_LOYALTY_NUMERIC = ("earned", "burned")
 
 
 # --- Receipts ----------------------------------------------------------------
@@ -128,7 +129,7 @@ def _to_float(value: str | None) -> float | None:
 
 
 def _coerce_loyalty_numbers(doc: dict[str, Any]) -> None:
-    """In place: coerce each history line's amount fields to float (handles "0,21")."""
+    """In place: coerce each history entry's amount fields to float (uniform DOUBLE)."""
     history = doc.get("history")
     if not isinstance(history, list):
         return
@@ -137,9 +138,7 @@ def _coerce_loyalty_numbers(doc: dict[str, Any]) -> None:
             continue
         for field in _LOYALTY_NUMERIC:
             if field in item:
-                item[field] = (
-                    _to_float(item[field]) if isinstance(item[field], str) else item[field]
-                )
+                item[field] = _as_float(item[field])
 
 
 def iter_loyalty_files(source_dir: str | Path) -> Iterator[dict[str, Any]]:

@@ -30,17 +30,17 @@ def _write(path, doc):
     path.write_text(json.dumps(doc), encoding="utf-8")
 
 
-def _month(month, label="X", earned=0.1):
+def _month(month, store="STORE", earned=0.1):
     return {
         "_id": month,
         "history": [
             {
                 "operationId": month,
                 "date": f"{month[:4]}-{month[4:]}-15",
+                "store": store,
                 "earned": earned,
-                "itemLabel": label,
-                "itemRd": 0.0,
                 "burned": 0.0,
+                "canceled": False,
             },
         ],
     }
@@ -67,12 +67,12 @@ def test_coerces_french_comma_amounts(tmp_path):
 
 def test_dedups_by_month_keeping_most_recent_file(tmp_path):
     # Same _id in two files; the lexicographically-later (more recent timestamp) wins.
-    _write(tmp_path / "20240101_00_00-loyalty.json", _month("202401", label="OLD"))
-    _write(tmp_path / "20240601_00_00-loyalty.json", _month("202401", label="NEW"))
+    _write(tmp_path / "20240101_00_00-loyalty.json", _month("202401", store="OLD"))
+    _write(tmp_path / "20240601_00_00-loyalty.json", _month("202401", store="NEW"))
 
     docs = list(iter_loyalty_files(tmp_path))
     assert len(docs) == 1
-    assert docs[0]["history"][0]["itemLabel"] == "NEW"
+    assert docs[0]["history"][0]["store"] == "NEW"
 
 
 def test_skips_history_doc_without_id(tmp_path):

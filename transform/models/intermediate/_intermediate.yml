@@ -1,21 +1,11 @@
 version: 2
 
 models:
-  - name: int_loyalty_matched
-    description: '{{ doc("fidelity_matching") }}'
-    columns:
-      - name: loyalty_line_id
-        description: "Unique key — one row per loyalty line is preserved by the join."
-        tests: [not_null, unique]
-      - name: match_similarity
-        description: "Best rapidfuzz similarity in [0, 1] (0 when no same-day receipt or unmatched)."
-        tests: [not_null]
-
   - name: int_product_categorized
     description: '{{ doc("product_categorization") }}'
     columns:
       - name: product_label
-        description: "Distinct receipt product label (the join key into fct_receipt_lines)."
+        description: "Distinct product label (store + Drive) — the join key into the line facts."
         tests: [not_null, unique]
       - name: category
         description: "Coarse category; NULL when no keyword scored above the threshold (caller falls back to the VAT heuristic)."

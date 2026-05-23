@@ -37,9 +37,7 @@ def model(dbt, session):
     out = None
     if config.CATEGORY_USE_EMBEDDINGS:
         # Optional local-only path; returns None if the ml extra is unavailable.
-        out = categorize_labels_semantic(
-            labels, seed, threshold=config.CATEGORY_MATCH_THRESHOLD
-        )
+        out = categorize_labels_semantic(labels, seed, threshold=config.CATEGORY_MATCH_THRESHOLD)
     if out is None:
         out = categorize_labels(labels, seed, threshold=config.CATEGORY_MATCH_THRESHOLD)
 

@@ -31,9 +31,9 @@ sources:
             tests: [not_null, unique]
       - name: loyalty__history
         description: >
-          Loyalty line items (child table of `loyalty`, dlt-unnested from the monthly
-          `history` array). One row per loyalty line; the stable per-line key
-          `loyalty_line_id` is computed downstream in `stg_loyalty`.
+          Loyalty operations (child table of `loyalty`, dlt-unnested from the monthly
+          `history` array). One row per operation: operationId, date, store, earned,
+          burned, canceled (no per-item detail at this endpoint).
       - name: orders
         description: >
           Drive orders, flattened in the dlt load (the nested productList/offers

@@ -19,6 +19,7 @@ MARTS = {
     "category_insights": "mart_category_insights",
     "product_prices": "mart_product_prices",
     "quantities": "mart_quantities",
+    "loyalty_savings": "mart_loyalty_savings",
 }
 
 
@@ -97,6 +98,7 @@ def main() -> None:
     categories = load_mart(MARTS["category_insights"], db_path)
     prices = load_mart(MARTS["product_prices"], db_path)
     quantities = load_mart(MARTS["quantities"], db_path)
+    loyalty = load_mart(MARTS["loyalty_savings"], db_path)
 
     # --- Sidebar filters ----------------------------------------------------
     all_months = sorted(spend["year_month"].dropna().unique().tolist())
@@ -121,21 +123,55 @@ def main() -> None:
         sel_months,
     )
 
+    # Loyalty (fidélité) savings are the store programme only — no Drive, no channel.
+    loyalty_f = _filter_year_month(loyalty, sel_years, sel_months) if not loyalty.empty else loyalty
+    loyalty_earned = (
+        0.0
+        if sel_channel == "drive" or loyalty_f.empty
+        else float(loyalty_f["loyalty_savings"].sum())
+    )
+
     # --- KPI headline -------------------------------------------------------
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Total paid", f"€{spend_f['total_paid'].sum():,.2f}")
-    c2.metric("Immediate discount", f"€{spend_f['immediate_discount'].sum():,.2f}")
-    c3.metric("Purchases", int(spend_f["purchase_count"].sum()))
+    gross = spend_f["total_before_immediate_discount"].sum()
+    immediate = spend_f["immediate_discount"].sum()
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Total paid (net)", f"€{spend_f['total_paid'].sum():,.2f}")
+    c2.metric("Before immediate discount", f"€{gross:,.2f}")
+    c3.metric("Immediate discount", f"€{immediate:,.2f}")
+    c4.metric("Loyalty earned (cagnotte)", f"€{loyalty_earned:,.2f}")
+    c5.metric("Purchases", int(spend_f["purchase_count"].sum()))
 
     # --- Monthly spend + rolling average ------------------------------------
     st.subheader("Monthly spend")
     spend_long = spend_f.melt(
         id_vars="year_month",
-        value_vars=[c for c in ("total_paid", "total_paid_roll_3m") if c in spend_f],
+        value_vars=[
+            c
+            for c in ("total_before_immediate_discount", "total_paid", "total_paid_roll_3m")
+            if c in spend_f
+        ],
         var_name="series",
         value_name="amount",
     )
     st.line_chart(spend_long, x="year_month", y="amount", color="series")
+
+    # --- Savings: immediate discount + loyalty cagnotte ---------------------
+    st.subheader("Savings (immediate discount + fidélité cagnotte)")
+    savings = spend_f.groupby("year_month", as_index=False)[["immediate_discount"]].sum()
+    if not loyalty_f.empty:
+        savings = savings.merge(
+            loyalty_f[["year_month", "loyalty_savings"]], on="year_month", how="outer"
+        )
+    savings = savings.fillna(0.0).sort_values("year_month")
+    value_vars = [c for c in ("immediate_discount", "loyalty_savings") if c in savings]
+    savings_long = savings.melt(
+        id_vars="year_month", value_vars=value_vars, var_name="kind", value_name="amount"
+    )
+    st.bar_chart(savings_long, x="year_month", y="amount", color="kind")
+    st.caption(
+        "Loyalty cagnotte is the in-store fidélité programme (earned + item discount); "
+        "it is independent of the channel filter."
+    )
 
     # --- Category breakdown -------------------------------------------------
     if not categories.empty:

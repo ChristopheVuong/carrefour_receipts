@@ -204,7 +204,7 @@ month `_id`) deduplicate overlapping documents automatically.
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | Extractor returns 403 | Cookies expired | Re-run `make auth-service` → click *Open browser & capture cookies* |
-| `dbt build` fails on `int_loyalty_matched` | `stg_loyalty` empty (no loyalty JSON loaded) | Run the loyalty extraction (`--type loyalty_operation`), check `LOYALTY_SOURCE_DIR`, then `make elt` |
+| `dbt build` fails on `stg_loyalty` | No loyalty JSON loaded (`raw.loyalty` absent) | Run the loyalty extraction (`--type loyalty_operation`), check `LOYALTY_SOURCE_DIR`, then `make elt` |
 | Dashboard shows "marts not found" | `dbt build` not run yet | `make build` |
-| Duplicate loyalty rows in DuckDB | Unlikely; if seen after a schema change to `loyalty_line_id` | `make clean && make build` with all archived files |
+| Duplicate loyalty rows in DuckDB | Unlikely; if seen after a schema change to `loyalty_operation_id` | `make clean && make build` with all archived files |
 | `make elt` fails with `Catalog Error: Table … does not exist! Did you mean raw_staging.…?` | A previous dlt load was interrupted, leaving its schema out of sync with DuckDB | `make clean && make build` (clears the dlt pipeline state too) |

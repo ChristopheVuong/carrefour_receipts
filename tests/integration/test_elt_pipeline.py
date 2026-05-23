@@ -121,10 +121,11 @@ def test_orders_merge_is_idempotent(tmp_path):
 def test_load_all_loads_loyalty_tables(loaded_all: Path):
     con = duckdb.connect(str(loaded_all))
     # dlt unnested the monthly `history` array into a child table.
-    # 3 month docs (root) -> 9 history line items (incl. one duplicate line).
+    # 3 month docs (root) -> 7 operations.
     assert con.execute("select count(*) from raw.loyalty").fetchone()[0] == 3
-    assert con.execute("select count(*) from raw.loyalty__history").fetchone()[0] == 9
-    # Numeric amounts are typed as floats (incl. the "0,21" French-comma value).
+    assert con.execute("select count(*) from raw.loyalty__history").fetchone()[0] == 7
+    # Amounts are typed as floats (incl. the "0,21" French-comma value, and burned which
+    # is int on some rows -> coerced so dlt keeps one DOUBLE column, not a variant).
     cols = {
         r[0]: r[1]
         for r in con.execute(
@@ -133,12 +134,12 @@ def test_load_all_loads_loyalty_tables(loaded_all: Path):
         ).fetchall()
     }
     assert cols["earned"] == "DOUBLE"
-    assert cols["item_rd"] == "DOUBLE"
+    assert cols["burned"] == "DOUBLE"
     # The comma-decimal "0,21" was coerced, not NULLed.
-    banane = con.execute(
-        "select distinct earned from raw.loyalty__history where item_label = 'BANANE BIO'"
-    ).fetchall()
-    assert banane == [(0.21,)]
+    earned = con.execute(
+        "select earned from raw.loyalty__history where operation_id = '64070450001'"
+    ).fetchone()[0]
+    assert earned == 0.21
 
 
 def test_loyalty_merge_is_idempotent(tmp_path):
@@ -149,14 +150,14 @@ def test_loyalty_merge_is_idempotent(tmp_path):
 
     con = duckdb.connect(str(db))
     # loyalty merges on the month `_id` => re-running the same files never
-    # duplicates months or their history lines.
+    # duplicates months or their operations.
     assert con.execute("select count(*) from raw.loyalty").fetchone()[0] == 3
     assert con.execute("select count(distinct _id) from raw.loyalty").fetchone()[0] == 3
-    assert con.execute("select count(*) from raw.loyalty__history").fetchone()[0] == 9
+    assert con.execute("select count(*) from raw.loyalty__history").fetchone()[0] == 7
 
 
-def _write_loyalty_month(directory: Path, month: str, label: str) -> None:
-    """Write a minimal one-line loyalty month doc (``_id`` + ``history``)."""
+def _write_loyalty_month(directory: Path, month: str, store: str) -> None:
+    """Write a minimal one-operation loyalty month doc (``_id`` + ``history``)."""
     import json
 
     directory.mkdir(parents=True, exist_ok=True)
@@ -166,12 +167,10 @@ def _write_loyalty_month(directory: Path, month: str, label: str) -> None:
             {
                 "operationId": month,
                 "date": f"{month[:4]}-{month[4:]}-15",
+                "store": store,
                 "earned": 0.10,
                 "burned": 0.0,
-                "itemLabel": label,
-                "promotionLabel": "",
-                "itemRd": 0.0,
-                "loyaltyOperation": "Paiement en caisse",
+                "canceled": False,
             }
         ],
     }
@@ -191,11 +190,11 @@ def test_loyalty_merge_accumulates_across_months(tmp_path):
     pdir = tmp_path / "dlt"
 
     dir_a = tmp_path / "win_a"  # older window: 202301 + 202401(v1)
-    _write_loyalty_month(dir_a, "202301", "BANANE BIO")
-    _write_loyalty_month(dir_a, "202401", "LAIT V1")
+    _write_loyalty_month(dir_a, "202301", "STORE A")
+    _write_loyalty_month(dir_a, "202401", "STORE V1")
     dir_b = tmp_path / "win_b"  # newer window: 202401(v2) + 202406
-    _write_loyalty_month(dir_b, "202401", "LAIT V2")
-    _write_loyalty_month(dir_b, "202406", "POMME GALA")
+    _write_loyalty_month(dir_b, "202401", "STORE V2")
+    _write_loyalty_month(dir_b, "202406", "STORE C")
 
     load_loyalty(str(dir_a), str(db), "raw", pipelines_dir=pdir)
     load_loyalty(str(dir_b), str(db), "raw", pipelines_dir=pdir)
@@ -205,8 +204,8 @@ def test_loyalty_merge_accumulates_across_months(tmp_path):
     months = {r[0] for r in con.execute("select _id from raw.loyalty").fetchall()}
     assert months == {"202301", "202401", "202406"}
     # 202401 was replaced by the newer window's version (v2), not duplicated.
-    labels = {r[0] for r in con.execute("select item_label from raw.loyalty__history").fetchall()}
-    assert labels == {"BANANE BIO", "LAIT V2", "POMME GALA"}
+    stores = {r[0] for r in con.execute("select store from raw.loyalty__history").fetchall()}
+    assert stores == {"STORE A", "STORE V2", "STORE C"}
     assert con.execute("select count(*) from raw.loyalty__history").fetchone()[0] == 3
 
 

@@ -28,8 +28,10 @@ select
     l.weight,
     l.unit_price,
     l.total_price,
-    l.immediate_discount,
-    l.total_price - coalesce(l.immediate_discount, 0) as total_after_discount
+    -- Receipts store the immediate discount as a negative reduction; expose it as a
+    -- positive "amount saved" and subtract it from the line total.
+    -coalesce(l.immediate_discount, 0)                as immediate_discount,
+    l.total_price + coalesce(l.immediate_discount, 0) as total_after_discount
 from lines l
 left join categorized c
     on l.product_label = c.product_label

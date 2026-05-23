@@ -8,8 +8,8 @@ model-paths: ["models"]
 target-path: "target"
 clean-targets: ["target", "dbt_packages"]
 
-# The fidélité match threshold is env-driven (config.FIDELITY_MATCH_THRESHOLD),
-# read by the int_loyalty_matched Python model — dbt vars aren't visible there.
+# The categorization match threshold is env-driven (config.CATEGORY_MATCH_THRESHOLD),
+# read by the int_product_categorized Python model — dbt vars aren't visible there.
 
 seeds:
   carrefour:

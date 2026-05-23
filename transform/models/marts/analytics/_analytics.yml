@@ -27,7 +27,13 @@ models:
               arguments:
                 values: ["store", "drive"]
       - name: total_paid
-        description: "Sum of purchase totals for the month/channel (0 when no shopping)."
+        description: "Net sum actually paid for the month/channel (0 when no shopping)."
+        tests: [not_null]
+      - name: total_before_immediate_discount
+        description: "What would have been paid without the immediate discount (paid + immediate)."
+        tests: [not_null]
+      - name: immediate_discount
+        description: "Immediate (checkout) discount saved this month/channel."
         tests: [not_null]
       - name: total_paid_roll_3m
         description: "Trailing 3-month average of total_paid per channel (partial at the start)."
@@ -81,4 +87,15 @@ models:
         tests: [not_null]
       - name: total_items
         description: "Total item quantity bought in the month/channel (0 when no shopping)."
+        tests: [not_null]
+
+  - name: mart_loyalty_savings
+    description: >
+      Monthly fidélité savings (store programme): cagnotte earned, burned and item
+      loyalty discount. One row per year_month; no channel (Drive has no fidélité).
+    columns:
+      - name: year_month
+        tests: [not_null, unique]
+      - name: loyalty_savings
+        description: "What fidélité gave back this month: cagnotte earned + item loyalty discount."
         tests: [not_null]

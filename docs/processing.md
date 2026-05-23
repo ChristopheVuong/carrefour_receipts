@@ -1,23 +1,13 @@
 # Processing & matching
 
-The Python processing layer holds the analytical logic that doesn't belong in SQL — fuzzy
-matching, embeddings, categorization. The two matching/categorization primitives are
-imported by the dbt **Python models**, so they are kept free of heavy/plotting dependencies.
+The Python processing layer holds the analytical logic that doesn't belong in SQL —
+fuzzy matching helpers, embeddings, categorization. The categorization primitive is
+imported by the dbt **Python model**, so it is kept free of heavy/plotting dependencies.
 
-## Fidélité one-to-one matching — [matching.py](../src/carrefour_receipts_api/matching.py)
-
-Matches loyalty item labels to receipt product lines on the same day.
-
-- `preprocess(text)` — lowercase + strip diacritics; used as the fuzzy processor.
-- `match_loyalty_to_receipts(loyalty, receipt_lines, threshold, scorer=fuzz.WRatio)` —
-  builds a rapidfuzz similarity matrix per day (`process.cdist`) and solves an **optimal
-  one-to-one assignment** with the Hungarian algorithm
-  (`scipy.optimize.linear_sum_assignment`, via `find_maximum_similarity_matching`). Each
-  loyalty line maps to at most one receipt line and vice versa; pairs below `threshold`
-  stay unmatched.
-
-Used by the dbt model `int_loyalty_matched`. Threshold: `config.FIDELITY_MATCH_THRESHOLD`
-(env `FIDELITY_MATCH_THRESHOLD`, default 0.85). No matplotlib so dbt can import it.
+`matching.py` provides the shared rapidfuzz helpers (`preprocess` — lowercase + strip
+diacritics; `fuzzy_match`) used by the categorization model. (There is no longer a
+loyalty↔receipt fuzzy join: the `/loyalty/transactions` API exposes loyalty only at the
+operation level, with no item labels to match — see the loyalty section below.)
 
 ## Product categorization — [categorization.py](../src/carrefour_receipts_api/categorization.py)
 
@@ -44,27 +34,22 @@ means it installs on macOS x86_64/Intel, where recent torch has no wheels. Insta
 the `ml` extra. On Intel Macs, `onnxruntime` is pinned `<1.24` (see `pyproject.toml`
 `[tool.uv]`).
 
-## ELT — Loyalty merge & line key
+## ELT — Loyalty merge & grain
 
-**Load grain (dlt):** the loyalty extract is one JSON document **per month** (`_id` = `YYYYMM`)
-carrying a `history` array. dlt unnests `history` into the child table `raw.loyalty__history`,
-and the `loyalty` resource `merge`s on the month `_id`
+The loyalty extract is one JSON document **per month** (`_id` = `YYYYMM`) carrying a
+`history` array. The `/loyalty/transactions` endpoint returns **operation-level** entries
+(`operationId`, `date`, `store`, `earned`, `burned`, `canceled`) — one per shopping trip's
+cagnotte movement, **no per-item breakdown**. dlt unnests `history` into the child table
+`raw.loyalty__history`, and the `loyalty` resource `merge`s on the month `_id`
 ([elt/load.py](../src/carrefour_receipts_api/elt/load.py)). So reloading a month replaces its
-lines while older months (absent from a fresh ~1-year extract) are kept — DuckDB **accumulates**
-history across loads, necessary because the API only returns a rolling ~1-year window (see
-[api-extraction.md](api-extraction.md)).
+operations while older months (absent from a fresh ~1-year extract) are kept — DuckDB
+**accumulates** history across loads, necessary because the API only returns a rolling
+~1-year window (see [api-extraction.md](api-extraction.md)).
 
-**Line key (dbt):** a loyalty line has no natural key (`operationId` repeats across an
-operation's items; dlt's `_dlt_id` changes every load), so `stg_loyalty` derives a deterministic
-`loyalty_line_id = md5(signature | occurrence)` from the unnested rows: the signature (all
-business fields, amounts rounded so `0.10` == `0.1`) plus a `row_number()` occurrence keeps
-genuinely duplicate lines distinct. Same content always yields the same key, so it is stable
-across rebuilds.
-
-> **Migration caveat:** the line key is recomputed by dbt each build (not stored). Changing the
-> signature columns in [stg_loyalty.sql](../transform/models/staging/stg_loyalty.sql) changes
-> every `loyalty_line_id` — harmless on a full `make build`, but anything that pinned old keys
-> must be rebuilt.
+`stg_loyalty` keys on the natural `loyalty_operation_id`. `earned`/`burned` are float-coerced
+in the load so dlt keeps a single DOUBLE column (`burned` is int on some rows). Monthly
+fidélité savings (cagnotte earned, excluding canceled operations) roll up in
+`mart_loyalty_savings`.
 
 ## ELT — Drive orders flatten
 

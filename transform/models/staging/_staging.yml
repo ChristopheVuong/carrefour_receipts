@@ -2,10 +2,10 @@ version: 2
 
 models:
   - name: stg_loyalty
-    description: "Cleaned loyalty (fidélité) line items, one row per loyalty line."
+    description: "Cleaned loyalty (fidélité) operations, one row per operation."
     columns:
-      - name: loyalty_line_id
-        description: "{{ doc('loyalty_line_id') }}"
+      - name: loyalty_operation_id
+        description: "{{ doc('loyalty_operation_id') }}"
         tests: [not_null, unique]
       - name: loyalty_date
         description: "Date the loyalty operation was recorded."

@@ -12,7 +12,7 @@
         "transactionDate": "2024-03-12T12:30:00",
         "totalPaidAmount": 8.31,
         "totalAmountBeforeDiscount": 9.31,
-        "totalAmountImmediateDiscount": 1.00,
+        "totalAmountImmediateDiscount": -1.00,
         "totalAmountDeferredDiscount": 0,
         "totalAmountVats": 0.49,
         "loyaltyCardNumber": "0000000000000000000",
@@ -23,10 +23,10 @@
             "product": [
                 {"vatPercentage": "5.5", "label": "CAROTTES VRAC", "quantity": 1, "weight": 0.95, "unitTypeCode": "KG", "unitPrice": 1.49, "totalPrice": 1.42, "immediateDiscount": 0},
                 {"vatPercentage": "5.5", "label": "PAIN DE MIE COMPLET", "quantity": 1, "weight": null, "unitTypeCode": "U", "unitPrice": 1.89, "totalPrice": 1.89, "immediateDiscount": 0},
-                {"vatPercentage": "20.0", "label": "DENTIFRICE MENTHE", "quantity": 2, "weight": null, "unitTypeCode": "U", "unitPrice": 3.00, "totalPrice": 5.00, "immediateDiscount": 1.00}
+                {"vatPercentage": "20.0", "label": "DENTIFRICE MENTHE", "quantity": 2, "weight": null, "unitTypeCode": "U", "unitPrice": 3.00, "totalPrice": 5.00, "immediateDiscount": -1.00}
             ],
             "coupon": [
-                {"immediateDiscount": 1.00, "label": "BON -1E DENTIFRICE"}
+                {"immediateDiscount": -1.00, "label": "BON -1E DENTIFRICE"}
             ]
         },
         "vats": [

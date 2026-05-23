@@ -73,11 +73,6 @@ RECEIPTS_SOURCE_DIR: str = _get("RECEIPTS_SOURCE_DIR", "tests/fixtures/receipts"
 LOYALTY_SOURCE_DIR: str = _get("LOYALTY_SOURCE_DIR", "tests/fixtures/loyalty")
 ORDERS_SOURCE_DIR: str = _get("ORDERS_SOURCE_DIR", "tests/fixtures/orders")
 
-# Minimum similarity (0..1) for a loyalty item label to be accepted as a match
-# against a receipt product label in the fidélité one-to-one join (dbt Python
-# model int_loyalty_matched). Env-driven so the dbt run can read it.
-FIDELITY_MATCH_THRESHOLD: float = float(_get("FIDELITY_MATCH_THRESHOLD", "0.85"))
-
 # --- Product categorization (dbt Python model int_product_categorized) ------
 # Minimum similarity (0..1) for a seed keyword to classify a product label; below
 # it the label falls back to the VAT-based category. Env-driven (dbt vars aren't

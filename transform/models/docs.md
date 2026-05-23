@@ -48,17 +48,6 @@ Carrefour API ──(curl/cookies)──▶ JSON / CSV in data/
 {% enddocs %}
 
 
-{% docs fidelity_matching %}
-Each loyalty line is matched to **at most one** receipt product line purchased the same
-day, and each receipt line to at most one loyalty line — an optimal one-to-one assignment
-(Hungarian algorithm, `scipy.optimize.linear_sum_assignment`) over a rapidfuzz
-string-similarity matrix. This replaces the previous greedy SQL, which let one receipt
-label be claimed by several loyalty lines and dropped quantities via `select distinct`.
-The logic lives in `carrefour_receipts_api.matching` and is unit-tested; the threshold is
-`config.FIDELITY_MATCH_THRESHOLD`.
-{% enddocs %}
-
-
 {% docs product_categorization %}
 Product labels are classified into a coarse `category` (food / hygiene_beauty / household
 / other) and a finer `subcategory` by fuzzy-matching (rapidfuzz `partial_ratio`) against
@@ -69,14 +58,12 @@ heuristic (`vat_category`) downstream. Logic lives in
 {% enddocs %}
 
 
-{% docs loyalty_line_id %}
-Stable, unique grain of a loyalty line. A loyalty line has no natural key
-(`operationId` repeats across an operation's items; `_dlt_id` changes each load), so this
-is a deterministic key — `md5(content signature | occurrence index)` — computed in
-`stg_loyalty` from the unnested `loyalty__history` rows. Same content always yields the same
-key, so it is stable across rebuilds. The `loyalty` source itself is merged on the month
-`_id`, so DuckDB accumulates history across loads even though the live API only returns a
-rolling ~1-year window.
+{% docs loyalty_operation_id %}
+Natural key of a fidélité operation (the API's `operationId`) — one shopping trip's
+cagnotte movement. The `/loyalty/transactions` endpoint exposes loyalty only at operation
+level (date, store, earned, burned, canceled), with no per-item breakdown. The `loyalty`
+source is merged on the month `_id`, so DuckDB accumulates history across loads even though
+the live API only returns a rolling ~1-year window.
 {% enddocs %}
 
 
