@@ -267,18 +267,32 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="Target DuckDB schema/dataset name (default: env DUCKDB_DATASET).",
     )
+    parser.add_argument(
+        "--pipelines-dir",
+        default=None,
+        help=(
+            "Directory for dlt's pipeline state (default: dlt's own location). Set this to a "
+            "persistent volume for containerized batch runs so state survives across runs."
+        ),
+    )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = _parse_args()
     if args.no_loyalty:
-        summary = load_receipts(source_dir=args.source, db_path=args.db, dataset=args.dataset)
+        summary = load_receipts(
+            source_dir=args.source,
+            db_path=args.db,
+            dataset=args.dataset,
+            pipelines_dir=args.pipelines_dir,
+        )
     else:
         summary = load_all(
             source_dir=args.source,
             loyalty_csv=args.loyalty,
             db_path=args.db,
             dataset=args.dataset,
+            pipelines_dir=args.pipelines_dir,
         )
     logger.info("row_counts", **summary["row_counts"])

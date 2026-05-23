@@ -83,6 +83,10 @@ uv run python -m carrefour_receipts_api.elt.load \
     --dataset raw
 ```
 
+`--pipelines-dir <path>` points dlt's pipeline state at a chosen directory (default: dlt's own
+location). Used by the containerized batch to keep state on a persistent volume — see
+[deployment.md](deployment.md).
+
 ## Tests
 
 `pytest` markers (see `pyproject.toml`): `fast`, `slow` (embeddings; needs the `ml`

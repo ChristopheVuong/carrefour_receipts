@@ -1,0 +1,48 @@
+# Batch ingestion + integrated serve. The default docker-compose.yml (standalone
+# dashboard over a host-built DuckDB) is left untouched; this is the additive,
+# containerized `make build` pipeline.
+#
+#   # 1. extract on the host first (needs a real browser — see docs/usage.md):
+#   make auth-service && uv run python -m carrefour_receipts_api.user_api_extractor
+#
+#   # 2. run the batch (dlt load + dbt build) into the shared volume:
+#   docker compose -f docker-compose.batch.yml run --rm builder
+#
+#   # 3. serve the freshly-built marts:
+#   docker compose -f docker-compose.batch.yml up dashboard
+#
+# `builder` is a one-shot job (use `run`, not `up`): it loads + builds, then exits.
+
+volumes:
+  # Holds carrefour.duckdb AND the dlt pipeline state (.dlt). Durable across runs so
+  # the merge accumulates history; shared builder (rw) -> dashboard (ro).
+  carrefour_state:
+
+services:
+  builder:
+    build:
+      context: .
+      dockerfile: Dockerfile.builder
+    volumes:
+      # Host-extracted JSON/CSV (PII) — read-only; the builder never extracts.
+      - ./data:/data/sources:ro
+      # Durable DuckDB + dlt state.
+      - carrefour_state:/state
+    environment:
+      DUCKDB_PATH: /state/carrefour.duckdb
+      DUCKDB_DATASET: raw
+      RECEIPTS_SOURCE_DIR: /data/sources
+      # Set this to your actual loyalty CSV filename under data/.
+      LOYALTY_SOURCE_CSV: /data/sources/loyalty_operation_ids.csv
+      DLT_PIPELINES_DIR: /state/.dlt
+
+  dashboard:
+    # Reuses the existing minimal dashboard image (Dockerfile), but reads the marts
+    # from the shared volume instead of a host bind.
+    build: .
+    ports:
+      - "8501:8501"
+    volumes:
+      - carrefour_state:/data:ro
+    environment:
+      DUCKDB_PATH: /data/carrefour.duckdb

@@ -141,14 +141,12 @@ Run steps **2 → 3 → 4** again. Key points:
 
 | Data | Behaviour on re-run |
 |---|---|
-| **Receipts** | Merged on `id` — existing receipts are updated in place, new ones added. Running twice = same result. |
-| **Loyalty** | Merged on a synthetic key — DuckDB accumulates the union across loads. A fresh ~1-year extract never erases older months. **Never delete `carrefour.duckdb` between runs** unless you are doing a full rebuild from all your archived files. |
+| **Receipts** | Merged on `id` — updated in place, new ones added. Running twice = same result. |
+| **Loyalty** | Merged on a synthetic key — DuckDB accumulates across loads. **Don't delete `carrefour.duckdb` between runs** (except a deliberate full rebuild). |
 
-> **Loyalty & the 1-year API window.** The endpoint only returns the past ~12 months.
-> Older history is preserved in DuckDB from previous loads. This means: as long as you
-> re-extract at least once a year, you keep the full history. If you let more than a year
-> pass without extracting, the loyalty history for the gap is unrecoverable from the API
-> (but receipt history is unaffected — receipts accumulate regardless).
+> Loyalty's API only returns the past ~12 months, so **re-extract at least once a year** to
+> keep the history continuous; older months already in DuckDB are preserved either way.
+> Receipts are unaffected (they accumulate regardless).
 
 Typical refresh:
 

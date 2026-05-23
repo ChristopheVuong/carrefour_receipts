@@ -70,28 +70,11 @@ heuristic (`vat_category`) downstream. Logic lives in
 
 
 {% docs loyalty_row_key %}
-A synthetic merge key that makes DuckDB the durable archive for loyalty history
-despite the live API's rolling ~1-year window.
-
-**Why no natural key exists:** `operationId` identifies a payment operation, not a
-line — it repeats across the multiple articles of one operation. `_dlt_id` is a
-per-load dlt surrogate that changes each run.
-
-**Construction:** `sha1(content_signature | occurrence_index)`.
-The content signature is the pipe-joined canonicalisation of all eight business
-fields (`operationId`, `date`, `itemLabel`, `promotionLabel`, `earned`, `burned`,
-`itemRd`, `loyaltyOperation`) — floats normalised to four decimal places so `"0.10"`
-and `"0.1"` in the raw CSV produce the same key. The occurrence index (a per-load
-Counter) distinguishes legitimately identical lines in the same operation.
-
-**Accumulation:** dlt `merge` is upsert-only. A fresh ~1-year extract upserts the
-current window; months outside the window are untouched in DuckDB. Re-running never
-creates duplicates. Retroactively corrected source lines generate a new key (different
-content) and the old version coexists — acceptable for aggregated KPIs.
-
-**Migration note:** the key is not stored in the CSV. Any change to
-`_LOYALTY_KEY_FIELDS` or `_canon` in `elt/load.py` invalidates all existing keys;
-treat it as a migration (drop `raw.loyalty`, wipe dlt state, reload).
+Stable, unique grain of a loyalty line. A loyalty line has no natural key
+(`operationId` repeats across an operation's items; `_dlt_id` changes each load), so this
+is a synthetic key — `sha1(content signature | occurrence index)` — computed at load time.
+The `loyalty` source is merged on it, so DuckDB accumulates history across loads even though
+the live API only returns a rolling ~1-year window.
 {% enddocs %}
 
 

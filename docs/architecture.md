@@ -45,6 +45,9 @@ Data flows left to right; each stage is independently runnable.
   model. The fastembed (ONNX) path is optional and off by default.
 - **No MongoDB.** The legacy MongoDB aggregation pipelines were fully removed; the modern
   stack replaces them.
+- **Deployment boundary.** Auth + extraction stay host-side CLI (they need a real browser for
+  Cloudflare); the EL+dbt step (`make build`) can run locally or as a re-runnable container
+  job. The merge-based load makes it idempotent — see [deployment.md](deployment.md).
 
 ## Repository layout
 

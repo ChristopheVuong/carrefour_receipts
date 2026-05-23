@@ -46,6 +46,7 @@ places:
 | [docs/api-extraction.md](docs/api-extraction.md) | Scraping & authentication (cookies, Cloudflare), extractors |
 | [docs/processing.md](docs/processing.md) | Matching, embeddings, categorization, loyalty merge key |
 | [docs/dashboard.md](docs/dashboard.md) | Running the Streamlit dashboard (local + Docker) |
+| [docs/deployment.md](docs/deployment.md) | Containerized batch ingestion (`make build` as a re-runnable job) |
 | [docs/development.md](docs/development.md) | Setup, extras, Make targets, tests/CI, env vars |
 
 ### Data mart (dbt — generated, not hand-written)
