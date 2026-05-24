@@ -1,35 +1,58 @@
-# carrefour_receipts
-
-Extract, model and analyze personal Carrefour receipts with a modern data stack:
-**dlt → DuckDB → dbt**, plus a Streamlit analytics dashboard.
+<h1 align="center">carrefour_receipts</h1>
 
 <p align="center">
-    <a href=""><img src="https://img.shields.io/badge/python-3.13-aff.svg"></a>
-    <a href=""><img src="https://img.shields.io/badge/os-linux%2C%20win%2C%20mac-pink.svg"></a>
+<strong>Vos courses, analysées.</strong><br>
+Pipeline personnel dlt → DuckDB → dbt + dashboard Streamlit + assistant NL texte-vers-SQL.
 </p>
+
+<p align="center">
+<a href="https://github.com/ChristopheVuong/carrefour_receipts/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/ChristopheVuong/carrefour_receipts/actions/workflows/ci.yml/badge.svg"></a>
+<a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+<img alt="Python 3.13" src="https://img.shields.io/badge/python-3.13-aff.svg">
+<img alt="Linux, Win, Mac" src="https://img.shields.io/badge/os-linux%2C%20win%2C%20mac-pink.svg">
+</p>
+
+<br>
 
 ## What it does
 
 Receipts (and loyalty/fidélité operations) are scraped from the Carrefour portal as
 JSON/CSV, loaded into DuckDB with **dlt**, transformed into a tested star schema with
-**dbt**, and surfaced as KPIs in a **Streamlit** dashboard. Highlights:
+**dbt**, and surfaced as KPIs in a **Streamlit** dashboard + a natural-language
+**SQL assistant** (Vanna 2.0 + OpenAI). Highlights:
 
 - One-to-one fidélité matching (Hungarian algorithm over rapidfuzz similarity).
 - Keyword-based product categorization (food / hygiene_beauty / household / other).
 - Analytics marts: monthly spend & rolling/YoY trends, category shares, price evolution,
   quantities.
+- Ask questions in plain French; the assistant generates read-only DuckDB SQL and renders
+  results as tables and Plotly charts.
+
+## Prérequis
+
+| Outil | Version | Installation |
+| --- | --- | --- |
+| [uv](https://docs.astral.sh/uv/) | ≥ 0.5 | `curl -LsSf https://astral.sh/uv/install.sh \| sh` (Linux/Mac) or `winget install astral-sh.uv` (Windows) |
+| Python | 3.13 | `uv python install 3.13` (géré automatiquement par uv) |
+| GNU Make | any | pré-installé sur Linux/Mac ; `winget install GnuWin32.Make` sur Windows |
 
 ## Quickstart
 
-Tooling is managed with [uv](https://docs.astral.sh/uv/). Configuration lives in `.env`
-(copy from `.env.example`; it is git-ignored).
-
 ```bash
-uv sync --extra elt --extra analysis     # install
-cp .env.example .env                      # configure
-make build                                # dlt load (fixtures -> DuckDB) + dbt build + tests
-make test                                 # offline tests with coverage
-make dashboard                            # Streamlit dashboard over the marts
+# 1 — dépendances
+uv sync --extra elt --extra analysis
+
+# 2 — configuration (.env est git-ignoré)
+cp .env.example .env          # renseigner DATA_DIRECTORY, DUCKDB_PATH, etc.
+
+# 3 — pipeline : extraction fixtures → DuckDB → dbt + tests
+make build
+
+# 4 — dashboard analytique  →  http://localhost:8501
+make dashboard
+
+# 5 — dashboard + assistant NL (nécessite ASSISTANT_LLM_API_KEY dans .env)
+make assistant
 ```
 
 ## Documentation
