@@ -1,9 +1,9 @@
-.PHONY: install install-ml lint format format-check typecheck test elt dbt build clean dashboard docs-dbt docker-build docker-run auth-service
+.PHONY: install install-ml lint format format-check typecheck test elt dbt build clean dashboard assistant docs-dbt docker-build docker-run auth-service
 
 # Dev workflow. Requires `uv` (https://docs.astral.sh/uv/).
 
 # Modern data stack modules — mypy scope (legacy modules have unresolved typing debt).
-STACK := src/carrefour_receipts_api/config.py src/carrefour_receipts_api/embeddings.py src/carrefour_receipts_api/matching.py src/carrefour_receipts_api/categorization.py src/carrefour_receipts_api/logging_config.py src/carrefour_receipts_api/elt src/carrefour_receipts_api/dashboard src/carrefour_receipts_api/auth_service
+STACK := src/carrefour_receipts_api/config.py src/carrefour_receipts_api/embeddings.py src/carrefour_receipts_api/matching.py src/carrefour_receipts_api/categorization.py src/carrefour_receipts_api/logging_config.py src/carrefour_receipts_api/elt src/carrefour_receipts_api/dashboard src/carrefour_receipts_api/auth_service src/carrefour_receipts_api/assistant
 
 install:  ## Create the venv and install the full local stack (dev + `all` extra)
 	uv sync --extra all
@@ -39,6 +39,9 @@ docs-dbt:  ## Generate + serve the dbt documentation site (independent of the RE
 
 dashboard:  ## Run the Streamlit analytics dashboard (needs `make build` first)
 	uv run --extra dashboard streamlit run src/carrefour_receipts_api/dashboard/app.py
+
+assistant:  ## Run the dashboard incl. the NL financial assistant page (needs ASSISTANT_LLM_* in .env)
+	uv run --extra dashboard --extra assistant streamlit run src/carrefour_receipts_api/dashboard/app.py
 
 auth-service:  ## Run the FastAPI auth service (browser login -> cookies) at :8000
 	uv run --extra api --extra scraping uvicorn carrefour_receipts_api.auth_service.app:app --port 8000

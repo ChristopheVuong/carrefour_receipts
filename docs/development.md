@@ -27,6 +27,7 @@ uv run pre-commit install                # wire the git hooks (lint/type on comm
 | `dashboard` | streamlit, altair, duckdb | the analytics dashboard |
 | `api` | fastapi, uvicorn | the auth service (browser login → cookies) |
 | `ml` | fastembed (ONNX, no torch) | semantic embeddings (optional, heavy — not in `all`) |
+| `assistant` | vanna[openai,duckdb,chromadb], sqlglot | NL financial assistant page ([assistant.md](assistant.md)) — not in `all` |
 | `scraping` | selenium, seleniumbase, playwright, patchright, curl_cffi | browser extraction + auth-service login (heavy — not in `all`) |
 
 The granular extras still exist so the **Docker image** (`--extra dashboard` only) and **CI**
