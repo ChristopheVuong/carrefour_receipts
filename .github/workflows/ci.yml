@@ -62,7 +62,7 @@ jobs:
         run: uv sync --extra elt --extra analysis
 
       - name: Load fixtures into DuckDB (dlt) — receipts + loyalty
-        run: uv run python -m carrefour_receipts_api.elt.load --source tests/fixtures/receipts --loyalty tests/fixtures/loyalty/loyalty.csv --dataset raw
+        run: uv run python -m carrefour_receipts_api.elt.load --source tests/fixtures/receipts --loyalty tests/fixtures/loyalty --dataset raw
 
       - name: Build + test dbt models
         working-directory: transform
