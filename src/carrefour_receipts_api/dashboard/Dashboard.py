@@ -8,11 +8,48 @@ Launch: ``streamlit run src/carrefour_receipts_api/dashboard/dashboard.py`` (or 
 
 from __future__ import annotations
 
+import re
+from datetime import datetime
+from pathlib import Path
+
 import duckdb
 import pandas as pd
 import streamlit as st
 
 from carrefour_receipts_api import config
+
+
+def _last_extraction_date() -> str | None:
+    """Return the most recent YYYYMMDD extraction folder date, or None if absent."""
+    data_dir = Path(config.DATA_DIRECTORY)
+    if not data_dir.exists():
+        return None
+    pattern = re.compile(r"^\d{8}$")
+    dates = sorted(
+        (p.name for p in data_dir.iterdir() if p.is_dir() and pattern.match(p.name)),
+        reverse=True,
+    )
+    if not dates:
+        return None
+    raw = dates[0]
+    dt = datetime.strptime(raw, "%Y%m%d")
+    mois = [
+        "",
+        "janvier",
+        "février",
+        "mars",
+        "avril",
+        "mai",
+        "juin",
+        "juillet",
+        "août",
+        "septembre",
+        "octobre",
+        "novembre",
+        "décembre",
+    ]
+    return f"{dt.day} {mois[dt.month]} {dt.year}"
+
 
 MARTS = {
     "monthly_spend": "mart_monthly_spend",
@@ -118,6 +155,13 @@ def main() -> None:
     sel_years = st.sidebar.multiselect("Année", all_years, default=all_years)
     sel_months = st.sidebar.multiselect("Mois", all_months, default=all_months)
     sel_cats = st.sidebar.multiselect("Catégorie", cat_values, default=cat_values)
+
+    st.sidebar.divider()
+    last_date = _last_extraction_date()
+    if last_date:
+        st.sidebar.caption(f"Dernière extraction : **{last_date}**")
+    else:
+        st.sidebar.caption("Dernière extraction : inconnue")
 
     spend_f = _filter_year_month(
         _collapse_channel(spend, ["year_month", "year", "month"], sel_channel),

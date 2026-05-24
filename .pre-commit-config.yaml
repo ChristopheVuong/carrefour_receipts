@@ -1,23 +1,20 @@
-# Pre-commit hooks mirroring the CI "quality" job, using the *same* tools and the
-# *same* "modern stack" scope. The lint/type/format scope is defined once in the
-# Makefile (the STACK variable) and these hooks delegate to those targets, so the
-# three stay in sync (Makefile ↔ CI ↔ pre-commit). Legacy modules carry intentional
-# style debt and are excluded by that scope.
+# Pre-commit hooks mirroring the CI quality job.
+# Hooks call uv run directly — no make delegation — so they work regardless of
+# whether make is in PATH in the pre-commit environment.
+#
+# ruff format and ruff check --fix mutate files when they find issues; pre-commit
+# will abort the commit so you can re-stage the auto-fixed files and retry.
 #
 # Setup:
 #   uv run pre-commit install          # wires both the pre-commit and pre-push stages
 # Run manually:
 #   uv run pre-commit run --all-files                       # commit-stage hooks
 #   uv run pre-commit run --all-files --hook-stage pre-push # also the test hook
-#
-# Tests run on *push* (not on every commit) to keep commits fast; they need the
-# `elt`/`analysis` extras installed (`make install`).
 
 default_install_hook_types: [pre-commit, pre-push]
 default_stages: [pre-commit]
 
 repos:
-  # Safe, non-mutating guards (notably a large-file guard, given data/ holds PII).
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
@@ -25,34 +22,41 @@ repos:
         args: [--maxkb=1024]
       - id: check-merge-conflict
 
-  # The project's actual linters/type-checker/tests, via the Makefile targets so
-  # the scope never drifts from CI.
   - repo: local
     hooks:
-      - id: ruff-check
-        name: ruff check (modern stack + tests)
-        entry: make lint
+      - id: ruff-format
+        name: ruff format (auto-fix)
+        entry: uv run ruff format src
         language: system
         types: [python]
         pass_filenames: false
 
-      - id: ruff-format-check
-        name: ruff format --check (modern stack)
-        entry: make format-check
+      - id: ruff-check
+        name: ruff check --fix
+        entry: uv run ruff check --fix src tests
         language: system
         types: [python]
         pass_filenames: false
 
       - id: mypy
         name: mypy (modern stack)
-        entry: make typecheck
+        entry: uv run mypy
+          src/carrefour_receipts_api/config.py
+          src/carrefour_receipts_api/embeddings.py
+          src/carrefour_receipts_api/matching.py
+          src/carrefour_receipts_api/categorization.py
+          src/carrefour_receipts_api/logging_config.py
+          src/carrefour_receipts_api/elt
+          src/carrefour_receipts_api/dashboard
+          src/carrefour_receipts_api/auth_service
+          src/carrefour_receipts_api/assistant
         language: system
         types: [python]
         pass_filenames: false
 
       - id: pytest
         name: pytest (offline tests, on push)
-        entry: make test
+        entry: uv run pytest -m "not integration" --cov=carrefour_receipts_api --cov-report=term-missing -q
         language: system
         pass_filenames: false
         always_run: true
