@@ -91,21 +91,32 @@ def build_agent() -> tuple[Agent, ReadOnlyDuckDBRunner]:
 
 
 async def _collect(agent: Agent, question: str, conversation_id: str) -> tuple[str, list[dict]]:
-    """Drive one ``send_message`` turn, collecting narration text and chart dicts."""
+    """Drive one ``send_message`` turn, collecting narration text and chart dicts.
+
+    The stream yields many ``UiComponent`` variants (status cards, tool cards, the
+    SQL table, the chart, the final answer). We key off ``rich_component.type``:
+    ``"text"`` is the LLM's narration (``RichTextComponent.content``); ``"chart"`` is a
+    ``ChartComponent`` whose Plotly figure dict lives in ``.data`` (NOT ``.content`` —
+    every ``RichComponent`` has a default-empty ``.data``, so we must gate on the type).
+    Filtering to ``"text"`` also drops the status spam and the raw CSV preview that
+    ``RunSqlTool`` puts in its ``simple_component``.
+    """
     ctx = RequestContext(cookies={}, headers={}, remote_addr="127.0.0.1")
     texts: list[str] = []
     charts: list[dict] = []
     async for component in agent.send_message(
         request_context=ctx, message=question, conversation_id=conversation_id
     ):
-        simple = getattr(component, "simple_component", None)
-        text = getattr(simple, "text", None) if simple else None
-        if text:
-            texts.append(text)
         rich = getattr(component, "rich_component", None)
-        content = getattr(rich, "content", None) if rich else None
-        if isinstance(content, dict):  # VisualizeDataTool emits a Plotly figure dict
-            charts.append(content)
+        ctype = getattr(getattr(rich, "type", None), "value", None)
+        if ctype == "text":
+            content = getattr(rich, "content", "")
+            if content:
+                texts.append(content)
+        elif ctype == "chart":
+            data = getattr(rich, "data", None)
+            if isinstance(data, dict) and data:  # Plotly figure dict
+                charts.append(data)
     return "\n\n".join(texts).strip(), charts
 
 
