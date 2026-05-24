@@ -1,26 +1,22 @@
-# -*- coding: utf-8 -*-
 """
 TODO: Try batch call API with receipt refs
 """
 
-from abc import ABC, abstractmethod
 import csv
-from datetime import datetime
 import json
-import logging
-from typing import Any
-import subprocess
+from abc import ABC, abstractmethod
+from datetime import datetime
+from http.cookiejar import MozillaCookieJar
 from pathlib import Path
-from urllib.parse import urlencode, unquote
+from typing import Any, cast
+from urllib.parse import unquote, urlencode
 
-from carrefour_receipts_api.login import AccountLogin
+from carrefour_receipts_api import config
+from carrefour_receipts_api.logging_config import get_logger
 from carrefour_receipts_api.utils import check_keys, unpack_dict_zip
 
-# Configure logging (logging to console or in log file)
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
+# Structured logging (console or JSON via LOG_JSON) — see logging_config.
+logger = get_logger(__name__)
 
 # Define constants (e.g. number of fetching iterations and personal data folder)
 MAX_SCROLLS = float("inf")  # Maximum number of scrolls to fetch data
@@ -81,9 +77,7 @@ class BaseExtractor(ABC):
         pass
 
     @abstractmethod
-    def fetch_details(
-        self, base_url: str, refs: dict[str, Any], verbose: bool = False
-    ) -> None:
+    def fetch_details(self, base_url: str, refs: dict[str, Any], verbose: bool = False) -> None:
         """
         Fetch detailed data (either receipts, orders, or loyalty data) from the API and write it to json file.
         Args:
@@ -105,9 +99,7 @@ class BaseExtractor(ABC):
             filepath = Path(self.dst_folder) / date_str / filename
             if not filepath.parent.exists():
                 filepath.parent.mkdir(parents=True, exist_ok=True)
-            filepath.write_text(
-                json.dumps(data, ensure_ascii=False, indent=4), encoding="utf-8"
-            )
+            filepath.write_text(json.dumps(data, ensure_ascii=False, indent=4), encoding="utf-8")
             logger.info(f"Data saved to: {self.dst_folder}/{filename}")
 
     @classmethod
@@ -128,10 +120,11 @@ class CarrefourBaseExtractor(BaseExtractor):
     REFERER_URL = ""
     RECORD_TYPE = ""
     PARAM_KEYS = []
+    # Two-phase types (receipts, orders) list IDs then fetch per-ID details. Loyalty is
+    # single-phase: fetch_paginated_data already writes the complete monthly history JSON.
+    NEEDS_DETAIL_FETCH = True
 
-    def __init__(
-        self, cookies_file: str = COOKIES_FILE, dst_folder: str = DATA_DIRECTORY
-    ) -> None:
+    def __init__(self, cookies_file: str = COOKIES_FILE, dst_folder: str = DATA_DIRECTORY) -> None:
         """
         Initialize the handler with default configurations.
         Args:
@@ -218,7 +211,7 @@ class CarrefourBaseExtractor(BaseExtractor):
             Dict[str, Any]: Parsed JSON response.
         Raises:
             FileNotFoundError: If the cookies file is not found. The fetching cannot continue as long as it is not fixed.
-            subprocess.CalledProcessError: If the curl command fails, that will propagate to other fetching operations.
+            RuntimeError: If curl_cffi is not installed (needed to pass Cloudflare).
         """
         # cannot use empty string as a parameter
         if "" in params.values():
@@ -228,67 +221,66 @@ class CarrefourBaseExtractor(BaseExtractor):
 
         api_url = f"{url}?{urlencode(params)}" if params else url
 
-        logger.info(f"Fetching data from: {api_url}")
-        curl_command = [
-            "curl",
-            "-X",
-            "GET",
-            api_url,
-            "-H",
-            "accept: application/json, text/plain, */*",
-            "-H",
-            "accept-language: fr,fr-FR;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
-            "-b",
-            self.cookies_file,
-            "-H",
-            "dnt: 1",
-            "-H",
-            "priority: u=1, i",
-            "-H",
-            f"referer: {referer}",
-            "-H",
-            'sec-ch-ua: "Microsoft Edge";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
-            "-H",
-            "sec-ch-ua-mobile: ?0",
-            "-H",
-            'sec-ch-ua-platform: "macOS"',
-            "-H",
-            "sec-fetch-dest: empty",
-            "-H",
-            "sec-fetch-mode: cors",
-            "-H",
-            "sec-fetch-site: same-origin",
-            "-H",
-            "user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0",
-            "-H",
-            "x-requested-with: XMLHttpRequest",
-        ]
+        # curl_cffi reproduces a real browser's TLS handshake (JA3); plain curl/requests/
+        # httpx use OpenSSL and get a 403 because Cloudflare binds cf_clearance to the JA3
+        # of the browser that solved the challenge. See config.CARREFOUR_TLS_IMPERSONATE.
         try:
-            # realistic request headers
-            result = subprocess.run(
-                curl_command,
-                capture_output=True,
-                text=True,
-                check=True,
+            from curl_cffi import requests as cffi_requests
+        except ImportError as exc:  # pragma: no cover - depends on optional extra
+            raise RuntimeError(
+                "curl_cffi is required to reach the Carrefour API past Cloudflare. "
+                "Install it with: uv sync --extra scraping"
+            ) from exc
+
+        jar = MozillaCookieJar(self.cookies_file)
+        jar.load(ignore_discard=True, ignore_expires=True)
+        cookies = {c.name: c.value for c in jar if c.value is not None}
+
+        headers = {
+            "accept": "application/json, text/plain, */*",
+            "accept-language": "fr,fr-FR;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
+            "dnt": "1",
+            "priority": "u=1, i",
+            "referer": referer,
+            "sec-ch-ua": '"Microsoft Edge";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"macOS"',
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-origin",
+            "x-requested-with": "XMLHttpRequest",
+        }
+
+        logger.info("api_fetch", url=api_url, impersonate=config.CARREFOUR_TLS_IMPERSONATE)
+        try:
+            response = cffi_requests.get(
+                api_url,
+                headers=headers,
+                cookies=cookies,
+                impersonate=cast(Any, config.CARREFOUR_TLS_IMPERSONATE),
+                timeout=30,
             )
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to fetch API data: {e}")
+        except Exception as e:  # noqa: BLE001 - surface a transport failure
+            logger.error("api_fetch_failed", error=str(e))
             raise
+        # Non-2xx (e.g. an invalid scroll cursor -> 500, or a Cloudflare 403) degrade
+        # gracefully to {}: the body is parsed below and falls through to the error paths.
+        if response.status_code != 200:
+            logger.warning("api_non_ok_status", status=response.status_code)
         try:
-            data = json.loads(result.stdout)
-            logger.info("Parsed JSON Data:")
+            data = json.loads(response.text)
             if verbose:
-                print(json.dumps(data, indent=4))
+                logger.debug("parsed_json_data", data=data)
             if "code" in data and "message" in data:
-                logger.error(f"API Error: {data['code']} - {data['message']}")
+                logger.error("api_error", code=data["code"], message=data["message"])
                 return {}
             if "errors" in data:
-                logger.error(f"API Parameter Error")
+                logger.error("api_parameter_error")
                 return {}
             return data
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON response: {e}")
-            logger.debug(f"Raw response: {result.stdout}")
+            logger.debug(f"Raw response: {response.text}")
             return {}
 
     def extract_ids(
@@ -303,14 +295,12 @@ class CarrefourBaseExtractor(BaseExtractor):
             criterion1 (str): Name criterion for JSON files.
             criterion2 (str): Additional criterion for filtering files by batch (the extraction date by default).
             output_file (str): Path to the output CSV file.
-
-        Note: This is a quick workaround to limit the number of insertions in MongoDB.
         """
         rows = []
         headers = self.__class__.get_list_headers()
         headers.append("dateExtraction")
         for file in Path(self.dst_folder).rglob(f"{criterion2}*{criterion1}*.json"):
-            with open(file, "r", encoding="utf-8") as f:
+            with open(file, encoding="utf-8") as f:
                 item = json.load(f)
                 self.__class__.append_row_data(item, rows, headers, criterion2)
         logger.info(f"Extracted {len(rows)} {self.__class__.RECORD_TYPE} IDs.")
@@ -322,43 +312,29 @@ class CarrefourBaseExtractor(BaseExtractor):
                 if not file_exists:
                     writer.writerow(headers)
                 writer.writerows(rows)
-            logger.info(
-                f"{self.__class__.RECORD_TYPE} IDs saved to: {output_file}".capitalize()
-            )
+            logger.info(f"{self.__class__.RECORD_TYPE} IDs saved to: {output_file}".capitalize())
         else:
             logger.warning(f"No {self.__class__.RECORD_TYPE} IDs found.")
 
+    # The hooks below drive the two-phase (list IDs -> fetch details) flow. Single-phase
+    # extractors (NEEDS_DETAIL_FETCH = False) never call them; the base defaults make the
+    # ID/CSV phase opt-in instead of forcing every subclass to implement dead methods.
     @classmethod
-    @abstractmethod
     def append_row_data(
         cls, item: dict[str, Any], rows: list[list[str]], headers: list[str], criterion2: str
     ) -> None:
-        """
-        Extract row data from the item and append record ids in inventory.
-        """
-        pass
+        """Extract row data from ``item`` and append record ids to ``rows``."""
+        raise NotImplementedError(f"{cls.__name__} does not implement the ID-list phase.")
 
     @classmethod
-    @abstractmethod
     def get_list_headers(cls) -> list[str]:
-        """
-        Get headers for the list of records in a sheet.
-        Returns:
-            Dict[str, Any]: Headers for the receipt list.
-        """
-        return []
+        """Headers for the record-list CSV (two-phase extractors only)."""
+        raise NotImplementedError(f"{cls.__name__} does not implement the ID-list phase.")
 
     @classmethod
-    @abstractmethod
     def check_refs(cls, params: dict[str, Any]) -> None:
-        """
-        Validate required parameters.
-        Args:
-            params (Dict[str, Any]): Parameters to validate.
-        Raises:
-            ValueError: If any required parameter is missing.
-        """
-        pass
+        """Validate required references for the per-ID detail fetch (two-phase only)."""
+        raise NotImplementedError(f"{cls.__name__} does not implement the detail phase.")
 
     @staticmethod
     def remove_duplicates_from_list(file_path: str) -> None:
@@ -372,7 +348,7 @@ class CarrefourBaseExtractor(BaseExtractor):
 
         # Read the file and filter out duplicates
         try:
-            with open(file_path, "r", encoding="utf-8") as infile:
+            with open(file_path, encoding="utf-8") as infile:
                 reader = csv.reader(infile)
                 for row in reader:
                     if row[0] not in seen:  # Check if the first column value is unique
@@ -389,9 +365,7 @@ class CarrefourBaseExtractor(BaseExtractor):
 
         logger.info(f"Duplicates removed in place. File updated: {file_path}")
 
-    def fetch_details(
-        self, base_url: str, refs: dict[str, Any], verbose: bool = False
-    ) -> None:
+    def fetch_details(self, base_url: str, refs: dict[str, Any], verbose: bool = False) -> None:
         """
         Fetch detailed receipt data from the API.
         Args:
@@ -444,7 +418,7 @@ class CarrefourBaseExtractor(BaseExtractor):
         """
         headers = self.get_list_headers()
         try:
-            with open(input_file, "r", encoding="utf-8") as f:
+            with open(input_file, encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
                     # criterion based on date
@@ -580,6 +554,9 @@ class CarrefourLoyaltyExtractor(CarrefourBaseExtractor):
     PARAM_KEYS = ["loyaltyCardNumber", "loyaltyCardType"]
     API_URL = "https://www.carrefour.fr/api/user/secured/loyalty/transactions"
     API_URL_INDIV = "https://www.carrefour.fr/api/user/secured/loyalty/transactions"
+    # Single-phase: fetch_paginated_data writes the complete monthly history JSON, which
+    # the ELT loads directly. No ID-list/detail phase (no CSV), so no list-hook overrides.
+    NEEDS_DETAIL_FETCH = False
 
     def fetch_paginated_data(
         self,
@@ -604,9 +581,7 @@ class CarrefourLoyaltyExtractor(CarrefourBaseExtractor):
         month = int(date[:2])
         year = int(date[-4:])
         logger.info("Fetching initial data...")
-        current_date = datetime(
-            year=year, month=month, day=1
-        )  # Start with the initial date
+        current_date = datetime(year=year, month=month, day=1)  # Start with the initial date
         end_date_obj = datetime(
             year=end_date.year, month=end_date.month, day=1
         )  # Normalize end_date to the first day of the month
@@ -628,16 +603,12 @@ class CarrefourLoyaltyExtractor(CarrefourBaseExtractor):
 
                 if not data:
                     logger.info("No data to fetch.")
-                    current_date = self._increment_month(
-                        current_date
-                    )  # Increment the date
+                    current_date = self._increment_month(current_date)  # Increment the date
                     continue
 
                 # Process history data
                 if "history" in data and not data["history"]:
-                    current_date = self._increment_month(
-                        current_date
-                    )  # Increment the date
+                    current_date = self._increment_month(current_date)  # Increment the date
                     continue
 
                 # Save the data to a file
@@ -665,47 +636,6 @@ class CarrefourLoyaltyExtractor(CarrefourBaseExtractor):
             return current_date.replace(year=current_date.year + 1, month=1)
         return current_date.replace(month=current_date.month + 1)
 
-    @classmethod
-    def append_row_data(
-        cls,
-        item: dict[str, Any],
-        rows: list[list[str]],
-        headers: list[str],
-        criterion2: str,
-    ):
-        """
-        Append record ids in inventory.
-        """
-        if "history" in item:
-            for op in item["history"]:
-                rows.append(
-                    [
-                        op.get(headers[0]),
-                        criterion2,  # a criterion by default the extraction date
-                    ]
-                )
-
-    @classmethod
-    def get_list_headers(cls) -> list[str]:
-        """
-        Get headers for the record list.
-        Returns:
-            Dict[str, Any]: Headers for the receipt list.
-        """
-        return ["operationId"]
-
-    @classmethod
-    def check_refs(cls, params: dict[str, Any]) -> None:
-        """
-        Validate required references.
-        Args:
-            params (Dict[str, Any]): Parameters to validate.
-        Raises:
-            ValueError: If any required parameter is missing.
-        """
-        required_params = ["operationId"]
-        check_keys(params, required_params)
-
 
 def main(record_type: str):
     """
@@ -725,10 +655,6 @@ def main(record_type: str):
 
     extractor = factory.get_extractor(record_type)
 
-    # # Step 0: Perform login
-    # login = AccountLogin()
-    # handler.perform_login("https://www.carrefour.fr/login")
-
     # Step 1: Fetch paginated data or whole data
     if len(list_params) > 0:
         for p in list_params:
@@ -740,15 +666,18 @@ def main(record_type: str):
             extractor.__class__.API_URL, params, max_scrolls=max_scrolls, verbose=False
         )
 
+    # Steps 2 & 3 (two-phase types only): list IDs to a CSV, then fetch per-ID details.
+    # Loyalty is single-phase — fetch_paginated_data already wrote the full history JSON.
+    if not extractor.NEEDS_DETAIL_FETCH:
+        return
+
     # Step 2: Extract IDs
     extractor.extract_ids(
         criterion1=f"{CarrefourBaseExtractor.BRAND_NAME}_{record_type}s_",
         criterion2=datetime.now().strftime("%Y%m%d"),
         output_file=f"{DATA_DIRECTORY}/{record_type}_ids.csv",
     )
-    CarrefourBaseExtractor.remove_duplicates_from_list(
-        f"{DATA_DIRECTORY}/{record_type}_ids.csv"
-    )
+    CarrefourBaseExtractor.remove_duplicates_from_list(f"{DATA_DIRECTORY}/{record_type}_ids.csv")
 
     # Step 3: Fetch receipt details
     extractor.fetch_details_from_file(
@@ -765,14 +694,10 @@ def get_fetch_payload(record_type: str):
     """
     match record_type:
         case "receipt":
-            config = AccountLogin.load_secrets(
-                path_to_secrets=f"{DATA_DIRECTORY}/secrets.yml"
-            )
-
             return {
                 "loyaltyCardNumber": [
-                    config.get("loyaltyCardNumber", ""),
-                    config.get("passCardNumber", ""),
+                    f"{config.LOYALTY_CARD_NUMBER}",
+                    f"{config.PASS_CARD_NUMBER}",
                 ],
                 "loyaltyCardType": ["LOYALTY", "PASS_MASTERCARD"],
             }
@@ -785,7 +710,11 @@ def get_fetch_payload(record_type: str):
                 "endDate": unquote(f"{end_date}T00%3A00%3A00.000Z"),
             }
         case "loyalty_operation":
-            return {"date": "04/01/2022"}
+            return {
+                "loyaltyCardNumber": f"{config.LOYALTY_CARD_NUMBER}",
+                "loyaltyCardType": "LOYALTY",
+                "date": "04/01/2022",
+            }
         case _:
             logger.warning(
                 "Please choose between record_type: 'receipt', 'order' or 'loyalty_operation'."
@@ -797,9 +726,7 @@ class CarrefourDataExtractorFactory:
     Factory class to create extractor instances for receipts, orders, or loyalty operations.
     """
 
-    def __init__(
-        self, cookies_file: str = COOKIES_FILE, dst_folder: str = DATA_DIRECTORY
-    ) -> None:
+    def __init__(self, cookies_file: str = COOKIES_FILE, dst_folder: str = DATA_DIRECTORY) -> None:
         """
         Initialize the factory with default configurations.
 
@@ -815,7 +742,8 @@ class CarrefourDataExtractorFactory:
         Get an extractor instance based on the specified type.
 
         Args:
-            type_ (str): Type of extractor ('receipt', 'order', or 'loyalty').
+            type_ (str): Type of extractor ('receipt', 'order', or 'loyalty_operation').
+                Must match the ``record_type`` used by ``get_fetch_payload``.
 
         Returns:
             BaseExtractor: An instance of the appropriate extractor class.
@@ -828,14 +756,22 @@ class CarrefourDataExtractorFactory:
                 return CarrefourReceiptExtractor(self.cookies_file, self.dst_folder)
             case "order":
                 return CarrefourOrderExtractor(self.cookies_file, self.dst_folder)
-            case "loyalty":
+            case "loyalty_operation":
                 return CarrefourLoyaltyExtractor(self.cookies_file, self.dst_folder)
             case _:
-                raise ValueError(
-                    "Invalid type. Choose 'receipt', 'order', or 'loyalty'."
-                )
+                raise ValueError("Invalid type. Choose 'receipt', 'order', or 'loyalty_operation'.")
 
 
 # Main execution
 if __name__ == "__main__":
-    main(record_type="receipt")
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Extract Carrefour data via the hidden API.")
+    parser.add_argument(
+        "--type",
+        choices=["receipt", "order", "loyalty_operation"],
+        default="receipt",
+        help="Record type to extract (default: receipt).",
+    )
+    args = parser.parse_args()
+    main(record_type=args.type)

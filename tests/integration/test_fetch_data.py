@@ -1,51 +1,83 @@
 """
-Test cases for the CarrefourUserAPIHandler's fetch_data method with different arguments.
-Note: Those tests are there to detect any API key changes.
+Integration tests for the Carrefour extractors' ``fetch_data`` method.
+
+These hit the *live* Carrefour API and therefore require:
+  - a valid ``data/cookies.txt`` exported from an authenticated browser session;
+  - ``LOYALTY_CARD_NUMBER`` set in ``.env`` (loaded by ``config``).
+
+They are marked ``integration`` and skipped automatically when those
+prerequisites are missing (e.g. in CI). Their purpose is to detect breaking
+changes in the hidden API contract (parameters, pagination keys, payload shape).
 """
 
 from datetime import datetime, timedelta
+from pathlib import Path
+
 import pytest
 
-# from unittest.mock import patch, MagicMock
+from carrefour_receipts_api import config
 from carrefour_receipts_api.user_api_extractor import (
-    CarrefourUserAPIHandler,
-    CarrefourAccountLogin,
+    CarrefourLoyaltyExtractor,
+    CarrefourReceiptExtractor,
 )
+
+pytestmark = pytest.mark.integration
+
+DATA_DIRECTORY = config.DATA_DIRECTORY
+COOKIES_FILE = config.COOKIES_FILE
+
+# Skip the whole module unless live credentials are available locally.
+if not (Path(COOKIES_FILE).exists() and config.LOYALTY_CARD_NUMBER):
+    pytest.skip(
+        "Live Carrefour credentials missing "
+        f"({COOKIES_FILE} and/or LOYALTY_CARD_NUMBER); skipping integration tests.",
+        allow_module_level=True,
+    )
 
 
 @pytest.fixture
-def handler():
-    """Fixture to create an instance of CarrefourUserAPIHandler."""
-    return CarrefourUserAPIHandler(cookies_file="cookies.txt", dst_folder="data")
+def receipt_extractor() -> CarrefourReceiptExtractor:
+    """Receipt extractor wired to the local cookies file."""
+    return CarrefourReceiptExtractor(cookies_file=COOKIES_FILE, dst_folder=DATA_DIRECTORY)
 
-@pytest.mark.fast
-def test_fetch_receipts_list_one_scroll(handler: CarrefourUserAPIHandler):
-    """
-    Test the fetch_data method with a single scroll.
-    """
-    config = CarrefourAccountLogin.load_secrets()
-    params_loyalty = {
-        "loyaltyCardNumber": config.get("loyaltyCardNumber"),
+
+@pytest.fixture
+def loyalty_extractor() -> CarrefourLoyaltyExtractor:
+    """Loyalty extractor wired to the local cookies file."""
+    return CarrefourLoyaltyExtractor(cookies_file=COOKIES_FILE, dst_folder=DATA_DIRECTORY)
+
+
+@pytest.fixture
+def loyalty_params() -> dict[str, str]:
+    return {
+        "loyaltyCardNumber": f"{config.LOYALTY_CARD_NUMBER}",
         "loyaltyCardType": "LOYALTY",
     }
-    api_url = "https://www.carrefour.fr/api/user/secured/loyalty/orders/receipts"
+
+
+def test_fetch_receipts_list_one_scroll(
+    receipt_extractor: CarrefourReceiptExtractor, loyalty_params: dict[str, str]
+):
+    """The first receipts page returns data plus pagination cursors."""
     try:
-        data = handler.fetch_data(
-            api_url,
-            params_loyalty,
-            referer=CarrefourUserAPIHandler.BRAND_REFERER.get("referer_store", ""),
+        data = receipt_extractor.fetch_data(
+            CarrefourReceiptExtractor.API_URL,
+            loyalty_params,
+            referer=CarrefourReceiptExtractor.REFERER_URL,
             verbose=False,
         )
-    except Exception as e:
+    except Exception as e:  # pragma: no cover - network failure path
         pytest.fail(f"Failed to fetch data: {e}")
     assert isinstance(data, dict)
     assert "data" in data
-    assert "scrollPaging" in data["meta"]  # assume there is necessary history of data
+    assert "scrollPaging" in data["meta"]
     assert "scrollHash" in data["meta"]
 
 
+# scrollPaging is a point-in-time pagination cursor (an internal account/page id, distinct
+# from the loyalty card). It's a stale magic value tied to a past page snapshot.
 @pytest.mark.parametrize(
-    "scrollPaging, scrollHash, expected",
+    "scroll_paging, scroll_hash, expected",
     [
         (
             "1030550609885801100%239223370342573875807",
@@ -60,121 +92,69 @@ def test_fetch_receipts_list_one_scroll(handler: CarrefourUserAPIHandler):
         ("1030550609885801100%239223370382245035807", "invalid_hash", False),
     ],
 )
-@pytest.mark.fast
 def test_fetch_receipts_list_second_scroll(
-    handler: CarrefourUserAPIHandler, scrollPaging: str, scrollHash: str, expected: bool
+    receipt_extractor: CarrefourReceiptExtractor,
+    loyalty_params: dict[str, str],
+    scroll_paging: str,
+    scroll_hash: str,
+    expected: bool,
 ):
-    """
-    Test the fetch_data method with a single scroll.
-    Args:
-        scrollPaging (str): The scrollPaging parameter to use in the request.
-        scrollHash (str): The scrollHash parameter to use in the request.
-        expected (bool): Whether the response is expected to contain data.
-    Note: The scrollPaging is always the same, but the scrollHash may be different (dynamic?).
-    """
-    config = CarrefourAccountLogin.load_secrets()
-    params_loyalty = {
-        "loyaltyCardNumber": config.get("loyaltyCardNumber"),
-        "loyaltyCardType": "LOYALTY",
-    }
-    params = {
-        **params_loyalty,
-        "scrollPaging": scrollPaging,
-        "scrollHash": scrollHash,
-    }
-    api_url = "https://www.carrefour.fr/api/user/secured/loyalty/orders/receipts"
+    """Subsequent pages are driven by the ``scrollPaging``/``scrollHash`` cursors."""
+    params = {**loyalty_params, "scrollPaging": scroll_paging, "scrollHash": scroll_hash}
     try:
-        data = handler.fetch_data(
-            api_url,
+        data = receipt_extractor.fetch_data(
+            CarrefourReceiptExtractor.API_URL,
             params,
-            referer=CarrefourUserAPIHandler.BRAND_REFERER.get("referer_store", ""),
+            referer=CarrefourReceiptExtractor.REFERER_URL,
             verbose=False,
         )
-    except Exception as e:
+    except Exception as e:  # pragma: no cover - network failure path
         pytest.fail(f"Failed to fetch data: {e}")
 
     assert isinstance(data, dict)
     if expected:
         assert "data" in data
-        assert "scrollPaging" in data.get("meta")
-        assert "scrollHash" in data.get("meta")
+        assert "scrollPaging" in data.get("meta", {})
+        assert "scrollHash" in data.get("meta", {})
     else:
         assert "data" not in data
 
 
-@pytest.fixture
-def date_alternative_gap_check_fixture(request: pytest.FixtureRequest):
-    date_str_alternative = request.param  # Unpack parameters passed to the fixture
-    return date_alternative_gap_check(date_str_alternative)
-
-
-def date_alternative_gap_check(date_str_alternative: str):
-    """
-    Check if a given date is less than one year ago from today.
-    This function is used to demonstrate the date comparison logic.
-    """
-    # Get today's date
-    today = datetime.today()
-    month = int(date_str_alternative[:2])
-    year = int(date_str_alternative[-4:])
-
+def _date_within_last_year(date_str: str) -> bool:
+    """True when ``MM/01/YYYY`` is within the last 365 days and not in the future."""
+    month, year = int(date_str[:2]), int(date_str[-4:])
     current_date = datetime(year=year, month=month, day=1)
-    # Calculate the date one year ago (approximation using 365 days)
-    one_year_ago = today - timedelta(days=365)
-    # Check if the given date is less than one year ago
-    return (current_date > one_year_ago) and (current_date <= today)
+    one_year_ago = datetime.today() - timedelta(days=365)
+    return one_year_ago < current_date <= datetime.today()
 
 
 @pytest.mark.parametrize(
-    "date_alternative_str, date_alternative_gap_check_fixture",
-    [
-        ("02/01/2025", "02/01/2025"),
-        ("08/01/2025", "08/01/2025"),
-        ("08/01/2024", "08/01/2024"),
-        ("02/01/2024", "02/01/2024"),
-        ("02/01/2023", "02/01/2023"),
-    ],
-    indirect=["date_alternative_gap_check_fixture"],
+    "date_str",
+    ["02/01/2025", "08/01/2025", "08/01/2024", "02/01/2024", "02/01/2023"],
 )
-@pytest.mark.fast
-def test_fetch_loyalty_lists(
-    handler: CarrefourUserAPIHandler,
-    date_alternative_str: str,
-    date_alternative_gap_check_fixture: bool,
-):
-    """
-    Tests the fetch_data method for fetching loyalty lists.
-    """
-    api_url = "https://www.carrefour.fr/api/user/secured/loyalty/transactions"
-
-    if not date_alternative_str:
-        raise ValueError("The date is None.")
-    month = int(date_alternative_str[:2])
-    year = int(date_alternative_str[-4:])
-
-    current_date = datetime(
-        year=year, month=month, day=1
-    )  # Start with the initial date
+def test_fetch_loyalty_lists(loyalty_extractor: CarrefourLoyaltyExtractor, date_str: str):
+    """Loyalty history is only returned for dates within the last year."""
+    month, year = int(date_str[:2]), int(date_str[-4:])
     params = {
-        "date": current_date.strftime(
-            "%m/01/%Y"
-        )  # Use strftime for consistent formatting
+        "loyaltyCardNumber": f"{config.LOYALTY_CARD_NUMBER}",
+        "loyaltyCardType": "LOYALTY",
+        "date": datetime(year=year, month=month, day=1).strftime("%m/01/%Y"),
     }
 
-    data = handler.fetch_data(
-        api_url,
+    data = loyalty_extractor.fetch_data(
+        CarrefourLoyaltyExtractor.API_URL,
         params,
-        referer=CarrefourUserAPIHandler.BRAND_REFERER.get("referer_loyalty", ""),
+        referer=CarrefourLoyaltyExtractor.REFERER_URL,
         verbose=False,
     )
-    expected = date_alternative_gap_check_fixture
-    if expected:
-        assert isinstance(data, dict)
-        assert "history" in data, "History should be present in the data"
-        assert isinstance(
-            data.get("history", [{}])[0].get("earned"), float
-        ), "Earned should be a float"
+
+    assert isinstance(data, dict)
+    assert "history" in data
+    history = data.get("history") or []
+    if _date_within_last_year(date_str):
+        # In range the endpoint returns history; a month with no operations is still
+        # valid (empty list), so only assert the payload shape when there is data.
+        if history:
+            assert isinstance(history[0].get("earned"), float)
     else:
-        assert isinstance(data, dict)
-        assert "history" in data, "History should still be present in the data despite the date being more than a year ago"
-        assert not data.get("history"), "History should be empty when the date is more than a year ago"
+        assert not history

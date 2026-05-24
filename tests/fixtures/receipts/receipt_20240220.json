@@ -1,0 +1,39 @@
+{
+    "type": "receiptDetails",
+    "id": "1111111111111_20240220_2-5-1815",
+    "attributes": {
+        "dateKey": "20240220",
+        "gln": "1111111111111",
+        "retalixCode": "0001",
+        "receiptLabel": "20.02.24 18:15 0001 2 5",
+        "receiptNumber": "2-5-1815",
+        "barcode": null,
+        "storeName": "Test Store Alpha",
+        "transactionDate": "2024-02-20T18:15:00",
+        "totalPaidAmount": 23.07,
+        "totalAmountBeforeDiscount": 25.07,
+        "totalAmountImmediateDiscount": 0,
+        "totalAmountDeferredDiscount": 2.00,
+        "totalAmountVats": 2.34,
+        "loyaltyCardNumber": "0000000000000000000",
+        "paymentInfo": [
+            {"amount": 20.07, "choice": "Carte bancaire", "type": "04"},
+            {"amount": 3.00, "choice": "Cagnotte fidelite", "type": "20"}
+        ],
+        "products": {
+            "product": [
+                {"vatPercentage": "5.5", "label": "POMMES GALA", "quantity": 1, "weight": 1.20, "unitTypeCode": "KG", "unitPrice": 2.95, "totalPrice": 3.54, "immediateDiscount": 0},
+                {"vatPercentage": "5.5", "label": "YAOURT NATURE X8", "quantity": 1, "weight": null, "unitTypeCode": "U", "unitPrice": 2.15, "totalPrice": 2.15, "immediateDiscount": 0},
+                {"vatPercentage": "10.0", "label": "PLAT CUISINE LASAGNE", "quantity": 2, "weight": null, "unitTypeCode": "U", "unitPrice": 4.20, "totalPrice": 8.40, "immediateDiscount": 0},
+                {"vatPercentage": "20.0", "label": "GEL DOUCHE 250ML", "quantity": 1, "weight": null, "unitTypeCode": "U", "unitPrice": 2.99, "totalPrice": 2.99, "immediateDiscount": 0},
+                {"vatPercentage": "20.0", "label": "PILES AAA X4", "quantity": 1, "weight": null, "unitTypeCode": "U", "unitPrice": 7.99, "totalPrice": 7.99, "immediateDiscount": 0}
+            ],
+            "coupon": []
+        },
+        "vats": [
+            {"vatPercentage": "5.5", "vatAmount": 0.30, "vatTotalProducts": 5.69},
+            {"vatPercentage": "10.0", "vatAmount": 0.76, "vatTotalProducts": 8.40},
+            {"vatPercentage": "20.0", "vatAmount": 1.83, "vatTotalProducts": 10.98}
+        ]
+    }
+}

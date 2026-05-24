@@ -1,0 +1,34 @@
+name: "carrefour"
+version: "1.0.0"
+config-version: 2
+
+profile: "carrefour"
+
+model-paths: ["models"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+# The categorization match threshold is env-driven (config.CATEGORY_MATCH_THRESHOLD),
+# read by the int_product_categorized Python model — dbt vars aren't visible there.
+
+seeds:
+  carrefour:
+    +schema: seeds
+
+models:
+  carrefour:
+    # Propagate model/column descriptions into DuckDB as comments so the catalog
+    # is documented at the database level too (independent of any README).
+    +persist_docs:
+      relation: true
+      columns: true
+    staging:
+      +materialized: view
+    intermediate:
+      # Tables (not views): the two Python models are expensive (Hungarian
+      # one-to-one match, fuzzy categorization) and are joined by the marts.
+      +materialized: table
+    marts:
+      +materialized: table
+      analytics:
+        +materialized: table

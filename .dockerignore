@@ -1,0 +1,25 @@
+# Keep the image small and free of local state / secrets.
+.git
+.github
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.mypy_cache
+
+# Local data & secrets — never bake into the image (PII / git-ignored).
+data/
+.env
+*.duckdb
+*.duckdb.wal
+
+# dbt build artifacts
+transform/target
+transform/dbt_packages
+transform/logs
+
+# Docs / notebooks not needed at runtime
+docs/
+notebooks/
+tests/

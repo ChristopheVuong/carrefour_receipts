@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Code quality + offline tests. Never touches the live Carrefour API:
+  # the integration tests (which need browser-exported cookies) are deselected.
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --extra elt --extra analysis --extra dashboard --extra api
+
+      - name: Ruff lint
+        run: uv run ruff check src tests
+
+      - name: Ruff format check
+        run: uv run ruff format --check src
+
+      - name: Mypy (modern stack — legacy modules excluded)
+        run: uv run mypy src/carrefour_receipts_api/config.py src/carrefour_receipts_api/embeddings.py src/carrefour_receipts_api/matching.py src/carrefour_receipts_api/categorization.py src/carrefour_receipts_api/logging_config.py src/carrefour_receipts_api/elt src/carrefour_receipts_api/dashboard src/carrefour_receipts_api/auth_service
+
+      - name: Pytest (unit + offline ELT) with coverage
+        run: uv run pytest -m "not integration" --cov=carrefour_receipts_api --cov-report=term-missing -q
+
+  # Data layer: prove the transformation modeling works end-to-end on committed
+  # fixtures, with no authentication required — dlt loads JSON into DuckDB, then
+  # dbt builds the star schema and runs data tests.
+  data:
+    runs-on: ubuntu-latest
+    env:
+      DUCKDB_PATH: ${{ github.workspace }}/carrefour.duckdb
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: Install ELT + analysis dependencies (analysis = rapidfuzz/scipy for the Python dbt model)
+        run: uv sync --extra elt --extra analysis
+
+      - name: Load fixtures into DuckDB (dlt) — receipts + loyalty
+        run: uv run python -m carrefour_receipts_api.elt.load --source tests/fixtures/receipts --loyalty tests/fixtures/loyalty --dataset raw
+
+      - name: Build + test dbt models
+        working-directory: transform
+        run: uv run dbt build --profiles-dir .
+
+# NOTE: live extraction tests (tests/integration/test_fetch_data.py) require
+# browser-exported cookies and secrets and therefore cannot run on a hosted
+# runner (Cloudflare Turnstile). Run them locally, or wire a manual
+# `workflow_dispatch` job that injects cookies/secrets from encrypted secrets.

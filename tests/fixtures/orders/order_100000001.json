@@ -1,0 +1,98 @@
+{
+  "attributes": {
+    "orderNumber": "100000001",
+    "date": "2024-01-20 10:15:00",
+    "serviceType": "PICKING_DRIVE",
+    "deliveryChannel": "DRIVE",
+    "orderStatus": "RECEPTIONNEE",
+    "totalAmount": 7.5,
+    "immediateDiscountAmount": 1.0,
+    "vatAt20": 2.0,
+    "vatAt5": 0,
+    "slot": {"dateBegin": "2024-01-21 16:30:00", "dateEnd": "2024-01-21 17:00:00"},
+    "paymentInfos": [
+      {"amount": 6.5, "date": "2024-01-20T10:15:00+01:00", "choice": "CB"},
+      {"amount": 1.0, "date": "2024-01-20T10:15:00+01:00", "choice": "eLOYALTY"}
+    ],
+    "productList": {
+      "categories": [
+        {
+          "name": "FRUITS_LEGUMES",
+          "products": [
+            {
+              "type": "product",
+              "id": "1",
+              "attributes": {
+                "ean": "3000000000001",
+                "title": "BANANE BIO",
+                "brand": "CARREFOUR BIO",
+                "category": "FRUITS_LEGUMES",
+                "orderLineIndex": 0,
+                "quantity": {"requested": 2, "delivered": 2, "refunded": 0},
+                "offers": {
+                  "3000000000001": {
+                    "0001-1-1": {
+                      "type": "offer",
+                      "attributes": {
+                        "price": {"price": 1.5, "totalPrice": {"requested": 3.0, "immediateDiscount": 0.0}}
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "type": "product",
+              "id": "2",
+              "attributes": {
+                "ean": "3000000000002",
+                "title": "POMME GALA",
+                "brand": "",
+                "category": "FRUITS_LEGUMES",
+                "orderLineIndex": 1,
+                "quantity": {"requested": 1, "delivered": 1, "refunded": 0},
+                "offers": {
+                  "3000000000002": {
+                    "0001-1-2": {
+                      "type": "offer",
+                      "attributes": {
+                        "price": {"price": 2.5, "totalPrice": {"requested": 2.5, "immediateDiscount": 1.0}}
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "HYGIENE",
+          "products": [
+            {
+              "type": "product",
+              "id": "3",
+              "attributes": {
+                "ean": "3000000000003",
+                "title": "DENTIFRICE MENTHE",
+                "brand": "COLGATE",
+                "category": "HYGIENE",
+                "orderLineIndex": 2,
+                "quantity": {"requested": 1, "delivered": 1, "refunded": 0},
+                "offers": {
+                  "3000000000003": {
+                    "0001-1-3": {
+                      "type": "offer",
+                      "attributes": {
+                        "price": {"price": 2.0, "totalPrice": {"requested": 2.0, "immediateDiscount": 0.0}}
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,51 @@
+version: 2
+
+sources:
+  - name: raw
+    description: "Raw receipt documents loaded by dlt (auto-normalized into child tables)."
+    schema: raw
+    tables:
+      - name: receipts
+        description: "One row per in-store receipt (header)."
+        columns:
+          - name: id
+            description: "Receipt natural key (gln_dateKey_receiptNumber)."
+            tests: [not_null, unique]
+      - name: receipts__attributes__products__product
+        description: "Receipt line items (child table of receipts)."
+      - name: receipts__attributes__vats
+        description: "Per-VAT-rate breakdown for each receipt."
+      - name: receipts__attributes__payment_info
+        description: "Payment splits (card, loyalty wallet, ...) per receipt."
+      - name: receipts__attributes__products__coupon
+        description: "Coupons applied on the receipt."
+      - name: loyalty
+        description: >
+          Monthly loyalty (fidélité) documents loaded by dlt from JSON, one row per
+          month. Merged on the month `_id` (YYYYMM), so reloading a month replaces its
+          lines while older months (absent from a fresh ~1-year extract) are kept —
+          DuckDB stays the durable archive of the rolling window.
+        columns:
+          - name: _id
+            description: "Month key (YYYYMM); the dlt merge key."
+            tests: [not_null, unique]
+      - name: loyalty__history
+        description: >
+          Loyalty operations (child table of `loyalty`, dlt-unnested from the monthly
+          `history` array). One row per operation: operationId, date, store, earned,
+          burned, canceled (no per-item detail at this endpoint).
+      - name: orders
+        description: >
+          Drive orders, flattened in the dlt load (the nested productList/offers
+          structure is resolved there) and merged on `order_number`.
+        columns:
+          - name: order_number
+            description: "Order natural key."
+            tests: [not_null, unique]
+      - name: orders__lines
+        description: >
+          Drive order line items (child table of `orders`, dlt-unnested from the
+          flattened `lines` array). One row per purchased line.
+      - name: orders__payments
+        description: >
+          Payment splits per Drive order (child table of `orders`, from `payments`).

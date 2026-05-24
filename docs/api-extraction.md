@@ -1,0 +1,137 @@
+# API extraction & authentication
+
+How raw receipts, Drive orders and loyalty (fidélité) operations are pulled from the
+Carrefour portal. This is the only stage that needs credentials; everything downstream
+runs on the exported files.
+
+> ⚠️ The extracted files (under `data/`) contain personal data — loyalty card numbers,
+> receipt details. `data/` is git-ignored and must never be committed. CI uses only the
+> committed fixtures in `tests/fixtures/`.
+
+## Why it's not a plain `requests` call
+
+The Carrefour site is behind Cloudflare. Two distinct walls:
+
+1. **Getting the cookies** — Cloudflare Turnstile challenges the login page. The supported
+   path is the **auth service** below (patched browser); two manual fallbacks also exist.
+2. **Using the cookies** — Cloudflare binds the `cf_clearance` cookie to the **TLS
+   fingerprint (JA3)** of the browser that solved the challenge. `requests`, `httpx` and
+   plain `curl` all use OpenSSL, whose handshake doesn't match a browser, so they get a
+   `403 cf-mitigated: challenge` *even with valid cookies*. The extractor therefore fetches
+   with **[`curl_cffi`](https://github.com/lexiforest/curl_cffi)** (curl-impersonate /
+   BoringSSL), reproducing a real browser's handshake. The impersonation target is
+   `CARREFOUR_TLS_IMPERSONATE` (default `edge101`) and must match the login browser family.
+
+## Auth service (browser login → cookies)
+
+[auth_service/](../src/carrefour_receipts_api/auth_service/) is a small FastAPI app that
+works like a browser-based OAuth login (à la Claude Code): it **opens the Carrefour login
+portal in a real browser, you log in, and it retrieves the credential from the browser**
+— except Carrefour isn't an OAuth provider, so the credential we keep is the **session
+cookie jar**, not a token. (A cross-domain `localhost` callback can't read `carrefour.fr`
+cookies, which is why we capture from the browser instead of a redirect callback.)
+
+```bash
+uv sync --extra api --extra scraping
+uv run playwright install chromium     # once, for the browser flow
+make auth-service                      # serves http://127.0.0.1:8000
+```
+
+Open <http://127.0.0.1:8000> and pick:
+
+| Endpoint | Flow |
+| --- | --- |
+| `POST /login/browser` | Pops a real browser at the login portal; when you reach your account page it captures the cookies (writes `COOKIES_FILE`) **and reads your loyalty / Pass card numbers** from the my-cards JSON into `SECRETS_FILE`. Needs the `scraping` extra (Playwright). |
+| `GET /login/redirect` | Redirects your current tab to the Carrefour login portal (manual path). |
+| `POST /cookies` | Manual fallback: paste a `cookie:` header (from DevTools → Network) to save it. |
+| `POST /account` | Manual fallback: enter the loyalty / Pass card numbers in the UI form to save them to `SECRETS_FILE`. |
+| `GET /status` | JSON — whether valid cookies are present. |
+
+Cookies are written in the **Netscape format** that the extractor's `curl -b` calls
+expect, at `config.COOKIES_FILE` (default `data/cookies.txt`). Configure the portal URLs
+with `CARREFOUR_LOGIN_URL` / `CARREFOUR_ACCOUNT_URL`.
+
+**Loyalty / Pass card numbers.** These are the API query params for the receipt and loyalty
+endpoints. After login the browser flow queries the authenticated `CARREFOUR_CARDS_URL`
+(default `…/api/user/secured/loyalty/my-cards`), which lists the account's cards as JSON
+(`{"attributes": [{"loyaltyCardNumber": …, "loyaltyCardType": "LOYALTY"|"PASS_MASTERCARD"}]}`),
+and writes them to `config.SECRETS_FILE` (`data/secrets.yml`, git-ignored). The LOYALTY
+number is normalized to its full barcode by prepending the `913572` Carte Carrefour prefix
+(my-cards returns it without the prefix, e.g. `0000005422294` → `9135720000005422294`, the
+form receipts use); the PASS number is kept as-is. If the call returns nothing for a card,
+enter it in the UI's *Loyalty / fidélité card* form. `config.LOYALTY_CARD_NUMBER` /
+`PASS_CARD_NUMBER` resolve **env var first** (`.env` override), then this file — so the
+extractor picks them up on its next run.
+
+**Cloudflare Turnstile.** Turnstile detects ordinary Playwright through the Chrome
+DevTools Protocol `Runtime.enable` leak, so the flow prefers **[patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright)**
+— a drop-in, CDP-leak-patched Playwright fork — when it's installed (`scraping` extra),
+falling back to vanilla Playwright otherwise. It also drives a **real installed browser**
+(auto-probes Chrome → Edge → bundled Chromium; force one with `BROWSER_CHANNEL`) and reuses
+a **persistent profile** at `BROWSER_PROFILE_DIR` (default `data/browser_profile`,
+git-ignored) so a once-passed challenge is remembered.
+
+```bash
+uv run patchright install chromium     # patched browser for the best Turnstile evasion
+```
+
+Turnstile also weighs IP reputation and behavioral signals, so even patched automation can
+be challenged. When that happens, use the manual `POST /cookies` paste below — you log in
+in your own normal browser (no automation at all), so it always works.
+
+### Manual fallback (no service)
+
+**Copy-as-cURL.** Log in in a browser (clearing Turnstile), DevTools → Network →
+right-click a request → *Copy as cURL*; save the cookies to `COOKIES_FILE`. Run the
+extractor from the **same IP** used to load the site.
+
+## Modules
+
+- [user_api_extractor.py](../src/carrefour_receipts_api/user_api_extractor.py) — the
+  extractors. A small factory builds the right one per record type (choose with `--type`):
+  - `CarrefourReceiptExtractor` — in-store receipts,
+  - `CarrefourOrderExtractor` — online (Drive) orders,
+  - `CarrefourLoyaltyExtractor` — monthly loyalty operations.
+
+  Receipts/orders are **two-phase** (paginate `scrollHash` → list IDs → fetch per-ID
+  details). Loyalty is **single-phase**: each month is fetched whole as one JSON document
+  (`_id` = `YYYYMM`) carrying a `history` array — no ID list, no CSV. All write JSON into
+  `data/{YYYYMMDD}/`. Logging is structured (structlog) — set `LOG_JSON=true` for
+  machine-readable output.
+
+> **Drive orders nest line prices behind dynamic dict keys**
+> (`attributes.offers[ean][offerId].attributes.price`), which dlt can't unnest. The ELT
+> loader flattens each order in Python first (one record per line); see the loyalty/orders
+> merge keys in [processing.md](processing.md).
+
+> **Loyalty's rolling 1-year window.** The loyalty endpoint only returns roughly the last
+> year, so each extract is a moving snapshot, not the full history. The loader absorbs this by
+> merging into DuckDB rather than replacing — see the loyalty merge key in
+> [processing.md](processing.md).
+
+## Running it
+
+```bash
+uv sync --extra scraping            # only if you need the browser fallbacks
+# put cookies in data/cookies.txt and credentials in data/secrets.yml, then:
+uv run python -m carrefour_receipts_api.user_api_extractor --type receipt
+uv run python -m carrefour_receipts_api.user_api_extractor --type loyalty_operation
+```
+
+## Output → next stage
+
+The receipt, loyalty and order JSON files are the input to the ELT loader. See
+[development.md](development.md) for loading them into DuckDB and
+[architecture.md](architecture.md) for the overall flow.
+
+## Data shapes
+
+- **Receipts**: `id` (`gln_dateKey_receiptNumber`), `dateKey`, store, totals, plus nested
+  arrays — products, VATs, payment splits, coupons — which dlt unnests into child tables.
+- **Loyalty**: one document per month (`_id` = `YYYYMM`) with a `history` array; each line
+  has `date`, `itemLabel`, `earned`, `burned`, `itemRd` (item discount), `loyaltyOperation`.
+  dlt unnests `history` into the `loyalty__history` child table.
+- **Orders (Drive)**: one document per order (`orderNumber`), with header (date, totals,
+  slot, `paymentInfos`) and `productList.categories[].products[]` lines; the price sits under
+  dynamic `offers[ean][offerId]` keys. The loader flattens this into a clean
+  `{header, payments[], lines[]}` doc; dlt unnests `lines` → `orders__lines`.

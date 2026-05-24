@@ -1,0 +1,18 @@
+version: 2
+
+models:
+  - name: int_product_categorized
+    description: '{{ doc("product_categorization") }}'
+    columns:
+      - name: product_label
+        description: "Distinct product label (store + Drive) — the join key into the line facts."
+        tests: [not_null, unique]
+      - name: category
+        description: "Coarse category; NULL when no keyword scored above the threshold (caller falls back to the VAT heuristic)."
+        tests:
+          - accepted_values:
+              arguments:
+                values: ["food", "hygiene_beauty", "household", "other"]
+      - name: match_confidence
+        description: "Similarity [0, 1] of the winning keyword (0 when unmatched)."
+        tests: [not_null]

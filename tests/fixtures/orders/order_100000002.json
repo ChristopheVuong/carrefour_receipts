@@ -1,0 +1,70 @@
+{
+  "attributes": {
+    "orderNumber": "100000002",
+    "date": "2024-02-18 09:00:00",
+    "serviceType": "CLICK_AND_COLLECT",
+    "deliveryChannel": "DRIVE",
+    "orderStatus": "RECEPTIONNEE",
+    "totalAmount": 5.0,
+    "immediateDiscountAmount": 0.0,
+    "vatAt20": 0.0,
+    "vatAt5": 0,
+    "slot": {"dateBegin": "2024-02-19 18:00:00", "dateEnd": "2024-02-19 18:30:00"},
+    "paymentInfos": [
+      {"amount": 5.0, "date": "2024-02-18T09:00:00+01:00", "choice": "eLOYALTY"}
+    ],
+    "productList": {
+      "categories": [
+        {
+          "name": "EPICERIE",
+          "products": [
+            {
+              "type": "product",
+              "id": "1",
+              "attributes": {
+                "ean": "3000000000010",
+                "title": "LAIT DEMI-ECREME 1L",
+                "brand": "CARREFOUR",
+                "category": "EPICERIE",
+                "orderLineIndex": 0,
+                "quantity": {"requested": 4, "delivered": 4, "refunded": 0},
+                "offers": {
+                  "3000000000010": {
+                    "0002-1-1": {
+                      "type": "offer",
+                      "attributes": {
+                        "price": {"price": 1.0, "totalPrice": {"requested": 4.0, "immediateDiscount": 0.0}}
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "type": "product",
+              "id": "2",
+              "attributes": {
+                "ean": "3000000000011",
+                "title": "PAIN DE MIE COMPLET",
+                "brand": "HARRYS",
+                "category": "EPICERIE",
+                "orderLineIndex": 1,
+                "quantity": {"requested": 1, "delivered": 1, "refunded": 0},
+                "offers": {
+                  "3000000000011": {
+                    "0002-1-2": {
+                      "type": "offer",
+                      "attributes": {
+                        "price": {"price": 1.0, "totalPrice": {"requested": 1.0, "immediateDiscount": 0.0}}
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

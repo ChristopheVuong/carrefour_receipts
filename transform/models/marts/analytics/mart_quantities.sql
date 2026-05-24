@@ -1,0 +1,54 @@
+-- Monthly quantity KPIs per channel: kilograms of fruit/veg, total items, and rolling
+-- consumption of hygiene/household-detergent items. Built over dim_month_spine × channels
+-- so empty months are 0 and the rolling windows are correct within each channel.
+-- One row per (year_month, channel).
+--
+-- Note: detergent *volume* (liters) is not derivable yet — the unit/volume isn't
+-- parsed from labels — so this tracks item counts; liters is a future enhancement.
+with monthly as (
+    select
+        strftime(purchase_date, '%Y-%m') as year_month,
+        channel,
+        sum(case when subcategory in ('fruit', 'vegetable') then coalesce(weight, 0) else 0 end) as fruit_veg_kg,
+        sum(quantity)                                                                            as total_items,
+        sum(case when category = 'hygiene_beauty' then quantity else 0 end)                      as hygiene_items,
+        sum(case when subcategory in ('laundry', 'dishwashing', 'cleaning') then quantity else 0 end) as detergent_items
+    from {{ ref('int_purchase_lines') }}
+    group by 1, 2
+),
+
+channels as (
+    select distinct channel from monthly
+),
+
+spine as (
+    select
+        s.year_month,
+        s.month_start,
+        c.channel,
+        coalesce(m.fruit_veg_kg, 0)    as fruit_veg_kg,
+        coalesce(m.total_items, 0)     as total_items,
+        coalesce(m.hygiene_items, 0)   as hygiene_items,
+        coalesce(m.detergent_items, 0) as detergent_items
+    from {{ ref('dim_month_spine') }} s
+    cross join channels c
+    left join monthly m
+        on m.year_month = s.year_month and m.channel = c.channel
+)
+
+select
+    year_month,
+    channel,
+    fruit_veg_kg,
+    total_items,
+    hygiene_items,
+    detergent_items,
+    avg(total_items) over w3      as items_roll_3m,
+    sum(hygiene_items) over w6    as hygiene_roll_6m,
+    sum(detergent_items) over w12 as detergent_roll_12m
+from spine
+window
+    w3  as (partition by channel order by month_start rows between 2  preceding and current row),
+    w6  as (partition by channel order by month_start rows between 5  preceding and current row),
+    w12 as (partition by channel order by month_start rows between 11 preceding and current row)
+order by channel, month_start

@@ -1,82 +1,49 @@
-"""
-Test of pipelines (simple aggregations first, up to complex aggregations: the ones in the scripts).
-Note: That may detect change in the key numbers in receipts.
+"""Offline query tests for the modern stack (DuckDB).
+
+A monthly summary (count + total paid, grouped by year-month) expressed as plain
+SQL over the dlt-loaded ``raw.receipts`` table — no network — so it runs in CI.
+This mirrors the summary that ``fct_receipts`` exposes in the dbt layer.
 """
 
+from pathlib import Path
+
+import duckdb
 import pytest
-from carrefour_receipts_api.mongodb_querying import query_collection
 
-# connection string locally
+from carrefour_receipts_api.elt.load import load_receipts
 
-# Pipeline in order to query the collection
-pipeline_summary = [
-    # Step 1: Extract year and month from "attributes.dateKey"
-    {
-        "$addFields": {
-            "year": {"$substr": ["$attributes.dateKey", 0, 4]},  # Extract year
-            "month": {"$substr": ["$attributes.dateKey", 4, 2]},  # Extract month
-            "yearMonthDay": {
-                "$toDate": {
-                    # Convert to date format YYYY-MM-DD
-                    "$concat": [
-                        {"$substr": ["$attributes.dateKey", 0, 4]},
-                        "-",
-                        {"$substr": ["$attributes.dateKey", 4, 2]},
-                        "-01",
-                    ]
-                }
-            },
-        }
-    },
-    # Step 2: Group by year and month, and calculate the total amount
-    {
-        "$group": {
-            "_id": {"year": "$year", "month": "$month"},  # Group by year and month
-            "count": {"$sum": 1},  # Count the number of documents for each group
-            "totalAmountBeforeDiscount": {
-                "$sum": "$attributes.totalAmountBeforeDiscount"
-            },
-            "totalAmountImmediateDiscount": {
-                "$sum": "$attributes.totalAmountImmediateDiscount"
-            },
-            "totalAmountDeferredDiscount": {
-                "$sum": "$attributes.totalAmountDeferredDiscount"
-            },
-            "totalPaidAmount": {
-                "$sum": "$attributes.totalPaidAmount"
-            },  # Sum up the totalPaidAmount,
-            "yearMonthDay": {"$first": "$yearMonthDay"},  # Convert yearMonthDay to date
-        }
-    },
-    # Step 3: Project the fields to include in the final output
-    {
-        "$project": {
-            "_id": 0,
-            "year": "$_id.year",
-            "month": "$_id.month",
-            "count": "$count",
-            "totalAmountBeforeDiscount": "$totalAmountBeforeDiscount",
-            "totalAmountImmediateDiscount": "$totalAmountImmediateDiscount",
-            "totalAmountDeferredDiscount": "$totalAmountDeferredDiscount",
-            "totalPaidAmount": "$totalPaidAmount",
-            "yearMonthDay": "$yearMonthDay",  # Include yearMonthDay for plotting
-        }
-    },
-    # Step 4: Sort the results by year and month
-    {"$sort": {"year": -1, "month": -1}},
-]
-@pytest.mark.skip(reason="This test requires a live MongoDB instance")
-def test_simple_aggregation():
-    """
-    Test a simple aggregation pipeline.
-    """
-    df = query_collection(pipeline_summary, collection_name="receipts")
-    assert not df.empty, "The aggregation result should not be empty"
-    assert "year" in df.columns, "The 'year' column should be present in the result"
-    assert "month" in df.columns, "The 'month' column should be present in the result"
-    assert "count" in df.columns, "The 'count' column should be present in the result"
-    assert "totalPaidAmount" in df.columns, "The 'totalPaidAmount' column should be present in the result"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+FIXTURES = str(REPO_ROOT / "tests" / "fixtures" / "receipts")
 
-@pytest.mark.skip(reason="Complex aggregation tests are not implemented yet")
-def test_complex_aggregation():
-    pass
+
+@pytest.fixture
+def con(tmp_path) -> duckdb.DuckDBPyConnection:
+    db = tmp_path / "carrefour.duckdb"
+    load_receipts(FIXTURES, str(db), "raw", pipelines_dir=tmp_path / "dlt")
+    return duckdb.connect(str(db), read_only=True)
+
+
+def test_monthly_summary_aggregation(con: duckdb.DuckDBPyConnection):
+    """Group receipts by year-month and total the paid amount (SQL == ex-Mongo)."""
+    rows = con.execute(
+        """
+        select
+            strftime(strptime(attributes__date_key, '%Y%m%d'), '%Y-%m') as year_month,
+            count(*)                                as receipt_count,
+            round(sum(attributes__total_paid_amount), 2) as total_paid
+        from raw.receipts
+        group by 1
+        order by 1
+        """
+    ).fetchall()
+
+    assert [r[0] for r in rows] == ["2024-01", "2024-02", "2024-03"]
+    assert [r[1] for r in rows] == [1, 1, 1]
+    assert [r[2] for r in rows] == [12.40, 23.07, 8.31]
+
+
+def test_total_paid_across_all_receipts(con: duckdb.DuckDBPyConnection):
+    total = con.execute(
+        "select round(sum(attributes__total_paid_amount), 2) from raw.receipts"
+    ).fetchone()[0]
+    assert total == pytest.approx(43.78)

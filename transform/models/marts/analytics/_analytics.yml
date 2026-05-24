@@ -1,0 +1,101 @@
+version: 2
+
+models:
+  - name: dim_month_spine
+    description: '{{ doc("month_spine") }}'
+    columns:
+      - name: month_start
+        description: "First day of the month (date)."
+        tests: [not_null, unique]
+      - name: year_month
+        description: "Month as YYYY-MM (join key for the time-series marts)."
+        tests: [not_null, unique]
+
+  - name: mart_monthly_spend
+    description: >
+      Monthly spend KPIs per channel: total paid, immediate discount and purchase
+      count, with rolling 3/6/12-month averages and year-over-year deltas. One row per
+      (year_month, channel) — grain enforced by assert_monthly_spend_grain.
+    columns:
+      - name: year_month
+        tests: [not_null]
+      - name: channel
+        description: "'store' (in-store receipts) or 'drive' (online orders)."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["store", "drive"]
+      - name: total_paid
+        description: "Net sum actually paid for the month/channel (0 when no shopping)."
+        tests: [not_null]
+      - name: total_before_immediate_discount
+        description: "What would have been paid without the immediate discount (paid + immediate)."
+        tests: [not_null]
+      - name: immediate_discount
+        description: "Immediate (checkout) discount saved this month/channel."
+        tests: [not_null]
+      - name: total_paid_roll_3m
+        description: "Trailing 3-month average of total_paid per channel (partial at the start)."
+      - name: yoy_pct
+        description: "Year-over-year change in total_paid; NULL until 13+ months of history."
+
+  - name: mart_category_insights
+    description: >
+      Monthly spend by category and channel with bio, non-food (VAT 20%) and
+      meat-vs-plant breakdowns. One row per (year_month, category, channel).
+    columns:
+      - name: year_month
+        tests: [not_null]
+      - name: channel
+        tests: [not_null]
+      - name: category
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["food", "hygiene_beauty", "household", "other"]
+      - name: spend
+        description: "Net spend (after immediate discount) for the category that month/channel."
+        tests: [not_null]
+
+  - name: mart_product_prices
+    description: >
+      Per-product monthly average unit price per channel, with flags for frequently
+      bought products and staple food baskets. One row per (product_label, year_month,
+      channel).
+    columns:
+      - name: product_label
+        tests: [not_null]
+      - name: year_month
+        tests: [not_null]
+      - name: channel
+        tests: [not_null]
+      - name: is_top_product
+        description: "True when the product's total quantity over the window clears the charting cutoff."
+        tests: [not_null]
+
+  - name: mart_quantities
+    description: >
+      Monthly quantity KPIs per channel: fruit/veg kilograms, total items, and rolling
+      hygiene / detergent consumption. One row per (year_month, channel) — grain
+      enforced by assert_quantities_grain.
+    columns:
+      - name: year_month
+        tests: [not_null]
+      - name: channel
+        tests: [not_null]
+      - name: total_items
+        description: "Total item quantity bought in the month/channel (0 when no shopping)."
+        tests: [not_null]
+
+  - name: mart_loyalty_savings
+    description: >
+      Monthly fidélité savings (store programme): cagnotte earned, burned and item
+      loyalty discount. One row per year_month; no channel (Drive has no fidélité).
+    columns:
+      - name: year_month
+        tests: [not_null, unique]
+      - name: loyalty_savings
+        description: "What fidélité gave back this month: cagnotte earned + item loyalty discount."
+        tests: [not_null]

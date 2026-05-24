@@ -1,0 +1,21 @@
+{
+  "_id": "202403",
+  "history": [
+    {
+      "operationId": "64070450006",
+      "date": "2024-03-12",
+      "store": "CARREFOUR PARIS 15",
+      "earned": 0.07,
+      "burned": 0.0,
+      "canceled": false
+    },
+    {
+      "operationId": "64070450007",
+      "date": "2024-03-19",
+      "store": "CARREFOUR PARIS 15",
+      "earned": 0.25,
+      "burned": 0.0,
+      "canceled": false
+    }
+  ]
+}

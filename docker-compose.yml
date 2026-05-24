@@ -1,0 +1,13 @@
+# Run the analytics dashboard against a locally-built DuckDB file.
+#   make build          # produce ./carrefour.duckdb (dlt load + dbt build)
+#   docker compose up    # serve the dashboard at http://localhost:8501
+services:
+  dashboard:
+    build: .
+    ports:
+      - "8501:8501"
+    volumes:
+      # Mount the host-built marts read-only into the container.
+      - ./carrefour.duckdb:/data/carrefour.duckdb:ro
+    environment:
+      DUCKDB_PATH: /data/carrefour.duckdb

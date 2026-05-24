@@ -1,0 +1,91 @@
+keyword,category,subcategory,priority
+banane,food,fruit,80
+pomme,food,fruit,70
+orange,food,fruit,70
+fraise,food,fruit,70
+raisin,food,fruit,70
+carotte,food,vegetable,80
+poireau,food,vegetable,80
+tomate,food,vegetable,70
+oignon,food,vegetable,70
+salade,food,vegetable,70
+courgette,food,vegetable,70
+pomme de terre,food,vegetable,80
+lait,food,dairy,75
+yaourt,food,dairy,80
+fromage,food,dairy,80
+beurre,food,dairy,75
+creme,food,dairy,60
+oeuf,food,dairy,70
+jambon,food,meat,80
+volaille,food,meat,80
+poulet,food,meat,80
+boeuf,food,meat,80
+steak,food,meat,80
+charcuterie,food,meat,75
+saucisse,food,meat,75
+viande,food,meat,80
+thon,food,fish,80
+saumon,food,fish,80
+poisson,food,fish,75
+pain de mie,food,bakery,85
+pain,food,bakery,60
+baguette,food,bakery,80
+viennoiserie,food,bakery,75
+brioche,food,bakery,70
+gateau,food,bakery,60
+plat cuisine,food,prepared,85
+lasagne,food,prepared,80
+pizza,food,prepared,80
+quiche,food,prepared,75
+riz,food,grocery,60
+pates,food,grocery,60
+farine,food,grocery,60
+sucre,food,grocery,60
+huile,food,grocery,55
+conserve,food,grocery,55
+cafe,food,beverage,70
+the,food,beverage,55
+jus,food,beverage,60
+eau,food,beverage,55
+soda,food,beverage,70
+cola,food,beverage,70
+biere,food,beverage,70
+vin,food,beverage,60
+chocolat,food,confectionery,70
+bonbon,food,confectionery,70
+glace,food,frozen,65
+liquide vaisselle,household,dishwashing,95
+vaisselle,household,dishwashing,85
+lessive,household,laundry,90
+adoucissant,household,laundry,85
+nettoyant,household,cleaning,85
+javel,household,cleaning,85
+eponge,household,cleaning,75
+essuie-tout,household,paper,90
+papier toilette,household,paper,90
+mouchoir,household,paper,80
+sac,household,accessories,60
+sac cabas,household,accessories,80
+pile,household,electrical,80
+ampoule,household,electrical,75
+bougie,household,home,70
+dentifrice,hygiene_beauty,oral_care,90
+brosse a dents,hygiene_beauty,oral_care,85
+bain de bouche,hygiene_beauty,oral_care,80
+gel douche,hygiene_beauty,body_care,90
+savon,hygiene_beauty,body_care,80
+shampoing,hygiene_beauty,hair_care,85
+shampooing,hygiene_beauty,hair_care,85
+deodorant,hygiene_beauty,body_care,80
+rasoir,hygiene_beauty,shaving,80
+mousse a raser,hygiene_beauty,shaving,80
+coton,hygiene_beauty,hygiene,70
+protege,hygiene_beauty,feminine_hygiene,75
+serviette hygienique,hygiene_beauty,feminine_hygiene,85
+tampon,hygiene_beauty,feminine_hygiene,80
+couche,hygiene_beauty,baby,80
+maquillage,hygiene_beauty,beauty,75
+creme hydratante,hygiene_beauty,beauty,80
+preservatif,hygiene_beauty,health,80
+pansement,hygiene_beauty,health,80
