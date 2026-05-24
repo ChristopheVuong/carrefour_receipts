@@ -82,3 +82,12 @@ CATEGORY_MATCH_THRESHOLD: float = float(_get("CATEGORY_MATCH_THRESHOLD", "0.80")
 # default so CI (which installs only elt + analysis, not the ml extra) stays fast
 # and deterministic.
 CATEGORY_USE_EMBEDDINGS: bool = _get("CATEGORY_USE_EMBEDDINGS", "false").lower() == "true"
+
+# --- Financial assistant (Vanna 2.0 text-to-SQL over the DuckDB marts) -------
+# LLM via an OpenAI-compatible endpoint: OpenAI (default) or a local Ollama
+# (ASSISTANT_LLM_BASE_URL=http://localhost:11434/v1, any dummy key). No Claude.
+ASSISTANT_LLM_BASE_URL: str = _get("ASSISTANT_LLM_BASE_URL", "https://api.openai.com/v1")
+ASSISTANT_LLM_API_KEY: str = _get("ASSISTANT_LLM_API_KEY", "") or os.getenv("OPENAI_API_KEY", "")
+ASSISTANT_MODEL: str = _get("ASSISTANT_MODEL", "gpt-4o-mini")
+# Optional ChromaDB vector store for learned examples (git-ignored under data/).
+ASSISTANT_VECTOR_DIR: str = _get("ASSISTANT_VECTOR_DIR", "data/vanna_chroma")

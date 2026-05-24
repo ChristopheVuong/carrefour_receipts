@@ -63,6 +63,13 @@ api = [
     "uvicorn[standard]>=0.30",
     "python-multipart>=0.0.9",
 ]
+# Natural-language financial assistant (text-to-SQL + Plotly) over the DuckDB marts.
+# Vanna 2.0 agent (LLM via OpenAI-compatible endpoint: OpenAI or local Ollama);
+# sqlglot guards generated SQL to read-only SELECTs on the analytical layer.
+assistant = [
+    "vanna[openai,duckdb,chromadb]>=2.0,<3",
+    "sqlglot>=25",
+]
 # Convenience aggregate for local development: the full runnable stack (pipeline +
 # dashboard + auth service). The heavy/optional extras `scraping` (selenium/
 # playwright) and `ml` (fastembed/ONNX) stay opt-in. `make install` uses this; the

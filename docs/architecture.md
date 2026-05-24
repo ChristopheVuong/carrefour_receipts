@@ -27,7 +27,7 @@ Data flows left to right; each stage is independently runnable.
 | **Load (EL)** | [elt/load.py](../src/carrefour_receipts_api/elt/load.py) (dlt) | `raw.*` tables in DuckDB |
 | **Transform (T)** | [transform/](../transform/) (dbt) | star schema + analytics marts |
 | **Process (Python in dbt)** | [matching.py](../src/carrefour_receipts_api/matching.py), [categorization.py](../src/carrefour_receipts_api/categorization.py), [embeddings.py](../src/carrefour_receipts_api/embeddings.py) | imported by the dbt Python models |
-| **Serve** | [dashboard/app.py](../src/carrefour_receipts_api/dashboard/app.py) (Streamlit) | interactive dashboard |
+| **Serve** | [dashboard/dashboard.py](../src/carrefour_receipts_api/dashboard/dashboard.py) (Streamlit) | interactive dashboard + NL [assistant](assistant.md) (text-to-SQL) |
 
 ## Design choices
 

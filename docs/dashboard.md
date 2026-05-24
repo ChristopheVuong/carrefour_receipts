@@ -5,7 +5,7 @@ headline KPIs, monthly spend with a rolling average, category breakdown, product
 price trends and quantity series — all filterable by year / month / category /
 **channel** (All / store / Drive; "All" sums the two).
 
-Source: [dashboard/app.py](../src/carrefour_receipts_api/dashboard/app.py). It reads the
+Source: [dashboard/dashboard.py](../src/carrefour_receipts_api/dashboard/dashboard.py). It reads the
 marts (`mart_monthly_spend`, `mart_category_insights`, `mart_product_prices`,
 `mart_quantities`) from the DuckDB file at `config.DUCKDB_PATH`.
 
@@ -24,7 +24,7 @@ If the marts are missing the app shows a hint instead of charts.
 ```bash
 uv sync --extra dashboard
 make dashboard
-# = streamlit run src/carrefour_receipts_api/dashboard/app.py  -> http://localhost:8501
+# = streamlit run src/carrefour_receipts_api/dashboard/dashboard.py  -> http://localhost:8501
 ```
 
 ## Run with Docker
