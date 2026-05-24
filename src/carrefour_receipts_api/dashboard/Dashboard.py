@@ -3,7 +3,7 @@
 Reads the dbt-built marts from the DuckDB file and renders interactive spend,
 category, price and quantity views. Build the marts first (``make build``).
 
-Launch: ``streamlit run src/carrefour_receipts_api/dashboard/app.py`` (or ``make dashboard``).
+Launch: ``streamlit run src/carrefour_receipts_api/dashboard/dashboard.py`` (or ``make dashboard``).
 """
 
 from __future__ import annotations
@@ -82,16 +82,16 @@ def _collapse_prices(df: pd.DataFrame, channel: str) -> pd.DataFrame:
 
 
 def main() -> None:
-    st.set_page_config(page_title="Carrefour Receipts", page_icon="🧾", layout="wide")
-    st.title("🧾 Carrefour Receipts — Analytics")
+    st.set_page_config(page_title="Dashboard Carrefour", page_icon="🧾", layout="wide")
+    st.title("🧾 Dashboard — Courses Carrefour")
 
     db_path = config.DUCKDB_PATH
     spend = load_mart(MARTS["monthly_spend"], db_path)
 
     if spend.empty:
         st.warning(
-            f"No marts found in `{db_path}`. Build them first with `make build` "
-            "(dlt load + dbt build), then reload."
+            f"Aucune donnée dans `{db_path}`. Lance d'abord `make build` "
+            "(dlt load + dbt build), puis recharge la page."
         )
         st.stop()
 
@@ -100,7 +100,7 @@ def main() -> None:
     quantities = load_mart(MARTS["quantities"], db_path)
     loyalty = load_mart(MARTS["loyalty_savings"], db_path)
 
-    # --- Sidebar filters ----------------------------------------------------
+    # --- Filtres latéraux ---------------------------------------------------
     all_months = sorted(spend["year_month"].dropna().unique().tolist())
     all_years = sorted({int(m[:4]) for m in all_months})
     cat_values = (
@@ -111,11 +111,13 @@ def main() -> None:
         sorted(spend["channel"].dropna().unique().tolist()) if "channel" in spend else []
     )
 
-    st.sidebar.header("Filters")
-    sel_channel = st.sidebar.selectbox("Channel", ["All", *channel_values])
-    sel_years = st.sidebar.multiselect("Year", all_years, default=all_years)
-    sel_months = st.sidebar.multiselect("Month", all_months, default=all_months)
-    sel_cats = st.sidebar.multiselect("Category", cat_values, default=cat_values)
+    st.sidebar.header("Filtres")
+    # Store English sentinel internally so helper functions stay channel-value agnostic.
+    _channel_label = st.sidebar.selectbox("Canal", ["Tous", *channel_values])
+    sel_channel = "All" if _channel_label == "Tous" else _channel_label
+    sel_years = st.sidebar.multiselect("Année", all_years, default=all_years)
+    sel_months = st.sidebar.multiselect("Mois", all_months, default=all_months)
+    sel_cats = st.sidebar.multiselect("Catégorie", cat_values, default=cat_values)
 
     spend_f = _filter_year_month(
         _collapse_channel(spend, ["year_month", "year", "month"], sel_channel),
@@ -135,14 +137,14 @@ def main() -> None:
     gross = spend_f["total_before_immediate_discount"].sum()
     immediate = spend_f["immediate_discount"].sum()
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Total paid (net)", f"€{spend_f['total_paid'].sum():,.2f}")
-    c2.metric("Before immediate discount", f"€{gross:,.2f}")
-    c3.metric("Immediate discount", f"€{immediate:,.2f}")
-    c4.metric("Loyalty earned (cagnotte)", f"€{loyalty_earned:,.2f}")
-    c5.metric("Purchases", int(spend_f["purchase_count"].sum()))
+    c1.metric("Total payé (net)", f"€{spend_f['total_paid'].sum():,.2f}")
+    c2.metric("Avant remise immédiate", f"€{gross:,.2f}")
+    c3.metric("Remise immédiate", f"€{immediate:,.2f}")
+    c4.metric("Cagnotte fidélité gagnée", f"€{loyalty_earned:,.2f}")
+    c5.metric("Achats", int(spend_f["purchase_count"].sum()))
 
-    # --- Monthly spend + rolling average ------------------------------------
-    st.subheader("Monthly spend")
+    # --- Dépenses mensuelles + moyenne glissante ----------------------------
+    st.subheader("Dépenses mensuelles")
     spend_long = spend_f.melt(
         id_vars="year_month",
         value_vars=[
@@ -155,8 +157,8 @@ def main() -> None:
     )
     st.line_chart(spend_long, x="year_month", y="amount", color="series")
 
-    # --- Savings: immediate discount + loyalty cagnotte ---------------------
-    st.subheader("Savings (immediate discount + fidélité cagnotte)")
+    # --- Économies : remise immédiate + cagnotte fidélité -------------------
+    st.subheader("Économies (remise immédiate + cagnotte fidélité)")
     savings = spend_f.groupby("year_month", as_index=False)[["immediate_discount"]].sum()
     if not loyalty_f.empty:
         savings = savings.merge(
@@ -169,13 +171,13 @@ def main() -> None:
     )
     st.bar_chart(savings_long, x="year_month", y="amount", color="kind")
     st.caption(
-        "Loyalty cagnotte is the in-store fidélité programme (earned + item discount); "
-        "it is independent of the channel filter."
+        "La cagnotte fidélité correspond au programme en magasin (points + remises produits) ; "
+        "elle est indépendante du filtre canal."
     )
 
-    # --- Category breakdown -------------------------------------------------
+    # --- Répartition par catégorie ------------------------------------------
     if not categories.empty:
-        st.subheader("Spend by category")
+        st.subheader("Dépenses par catégorie")
         cat_f = _filter_year_month(
             _collapse_channel(categories, ["year_month", "category"], sel_channel),
             sel_years,
@@ -185,20 +187,20 @@ def main() -> None:
             cat_f = cat_f[cat_f["category"].isin(sel_cats)]
         st.bar_chart(cat_f, x="year_month", y="spend", color="category")
 
-    # --- Product price trends ----------------------------------------------
+    # --- Tendances de prix produit ------------------------------------------
     if not prices.empty:
-        st.subheader("Product unit-price trends")
+        st.subheader("Évolution du prix unitaire par produit")
         prices_c = _collapse_prices(prices, sel_channel)
         top = prices_c[prices_c["is_top_product"]] if "is_top_product" in prices_c else prices_c
         products = sorted(top["product_label"].dropna().unique().tolist())
-        chosen = st.multiselect("Products", products, default=products[:5])
+        chosen = st.multiselect("Produits", products, default=products[:5])
         price_f = _filter_year_month(top[top["product_label"].isin(chosen)], sel_years, sel_months)
         if not price_f.empty:
             st.line_chart(price_f, x="year_month", y="avg_unit_price", color="product_label")
 
-    # --- Quantities ---------------------------------------------------------
+    # --- Quantités ----------------------------------------------------------
     if not quantities.empty:
-        st.subheader("Quantities")
+        st.subheader("Quantités")
         qty_f = _filter_year_month(
             _collapse_channel(quantities, ["year_month"], sel_channel), sel_years, sel_months
         )

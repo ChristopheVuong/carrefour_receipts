@@ -38,10 +38,10 @@ docs-dbt:  ## Generate + serve the dbt documentation site (independent of the RE
 	cd transform && uv run dbt docs generate --profiles-dir . && uv run dbt docs serve --profiles-dir .
 
 dashboard:  ## Run the Streamlit analytics dashboard (needs `make build` first)
-	uv run --extra dashboard streamlit run src/carrefour_receipts_api/dashboard/app.py
+	uv run --extra dashboard streamlit run src/carrefour_receipts_api/dashboard/dashboard.py
 
 assistant:  ## Run the dashboard incl. the NL financial assistant page (needs ASSISTANT_LLM_* in .env)
-	uv run --extra dashboard --extra assistant streamlit run src/carrefour_receipts_api/dashboard/app.py
+	uv run --extra dashboard --extra assistant streamlit run src/carrefour_receipts_api/dashboard/dashboard.py
 
 auth-service:  ## Run the FastAPI auth service (browser login -> cookies) at :8000
 	uv run --extra api --extra scraping uvicorn carrefour_receipts_api.auth_service.app:app --port 8000

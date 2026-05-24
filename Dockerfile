@@ -24,5 +24,5 @@ EXPOSE 8501
 
 # Streamlit needs to bind to all interfaces inside the container.
 CMD ["uv", "run", "--no-dev", "--extra", "dashboard", \
-     "streamlit", "run", "src/carrefour_receipts_api/dashboard/app.py", \
+     "streamlit", "run", "src/carrefour_receipts_api/dashboard/dashboard.py", \
      "--server.address=0.0.0.0", "--server.port=8501"]

@@ -14,8 +14,8 @@ import streamlit as st
 
 from carrefour_receipts_api import config
 
-st.set_page_config(page_title="Assistant financier", page_icon="💬", layout="wide")
-st.title("💬 Assistant financier")
+st.set_page_config(page_title="Assistant comptable", page_icon="💬", layout="wide")
+st.title("💬 Assistant comptable")
 
 
 @st.cache_resource(show_spinner="Initialisation de l'assistant…")
